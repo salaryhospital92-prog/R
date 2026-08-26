@@ -3,8 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
-// المستودع يُنشر على https://<user>.github.io/R/ فالمسارات كلها تحت /R/
-const BASE = '/R/'
+// النطاق الخاص alrifai.shop يخدم من الجذر
+const BASE = '/'
 
 export default defineConfig({
   base: BASE,
