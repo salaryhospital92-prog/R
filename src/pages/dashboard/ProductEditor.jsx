@@ -1,0 +1,287 @@
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
+import {
+  ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes,
+} from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { formatNumber, totalUnits } from '../../lib/format'
+import { uploadProductImage } from '../../lib/image'
+import { useAuth } from '../../context/AuthContext'
+
+// html5-qrcode مكتبة ثقيلة (~400KB) — تُحمَّل عند فتح الماسح فقط
+const BarcodeScanner = lazy(() => import('../../components/BarcodeScanner'))
+
+export default function ProductEditor() {
+  const { id } = useParams()
+  const isNew = id === 'new'
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const { isAdmin } = useAuth()
+  const fileInput = useRef(null)
+
+  const [categories, setCategories] = useState([])
+  const [form, setForm] = useState({
+    barcode: params.get('barcode') ?? '',
+    name: '',
+    category_id: '',
+    image_url: '',
+    quantity_single: 0,
+  })
+  const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
+  const [dozens, setDozens] = useState('')
+  const [singles, setSingles] = useState('')
+  const [imageFile, setImageFile] = useState(null)
+  const [preview, setPreview] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [loading, setLoading] = useState(!isNew)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState('')
+
+  const added = totalUnits(dozens, singles)
+
+  useEffect(() => {
+    supabase.from('categories').select('id, name').order('sort_order')
+      .then(({ data }) => setCategories(data ?? []))
+  }, [])
+
+  useEffect(() => {
+    if (isNew) return
+    const select = isAdmin
+      ? 'id, barcode, name, category_id, image_url, quantity_single, product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, category_id, image_url, quantity_single'
+
+    supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
+      if (error || !data) {
+        setError('المنتج غير موجود')
+      } else {
+        setForm({
+          barcode: data.barcode ?? '',
+          name: data.name,
+          category_id: data.category_id ? String(data.category_id) : '',
+          image_url: data.image_url ?? '',
+          quantity_single: data.quantity_single,
+        })
+        if (data.product_prices) {
+          setPrices({
+            price_retail: String(data.product_prices.price_retail ?? 0),
+            price_wholesale: String(data.product_prices.price_wholesale ?? 0),
+          })
+        }
+      }
+      setLoading(false)
+    })
+  }, [id, isNew, isAdmin])
+
+  const pickImage = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageFile(file)
+    setPreview(URL.createObjectURL(file))
+  }
+
+  const save = async (e) => {
+    e.preventDefault()
+    setError('')
+    setDone('')
+    if (!form.name.trim()) return setError('اسم المنتج مطلوب')
+    if (!form.category_id) return setError('اختر الصنف')
+    setBusy(true)
+
+    try {
+      const row = {
+        barcode: form.barcode.trim() || null,
+        name: form.name.trim(),
+        category_id: Number(form.category_id),
+      }
+
+      let productId = id
+      if (isNew) {
+        const { data, error } = await supabase.from('products').insert(row).select('id').single()
+        if (error) throw error
+        productId = data.id
+      } else {
+        const { error } = await supabase.from('products').update(row).eq('id', id)
+        if (error) throw error
+      }
+
+      if (imageFile) {
+        const url = await uploadProductImage(imageFile, productId)
+        const { error } = await supabase.from('products').update({ image_url: url }).eq('id', productId)
+        if (error) throw error
+      }
+
+      // الكمية لا تُكتب مباشرة — تمرّ عبر سجل الحركات ليبقى التدقيق كاملاً
+      if (added !== 0) {
+        const { error } = await supabase.from('stock_movements').insert({
+          product_id: productId,
+          type: 'stock_in',
+          dozen_qty: Number(dozens) || 0,
+          singles_qty: Number(singles) || 0,
+        })
+        if (error) throw error
+      }
+
+      if (isAdmin && (prices.price_retail !== '' || prices.price_wholesale !== '')) {
+        const { error } = await supabase.from('product_prices').upsert({
+          product_id: productId,
+          price_retail: Math.max(0, Math.round(Number(prices.price_retail) || 0)),
+          price_wholesale: Math.max(0, Math.round(Number(prices.price_wholesale) || 0)),
+          updated_at: new Date().toISOString(),
+        })
+        if (error) throw error
+      }
+
+      if (isNew) return navigate('/dashboard')
+      setDone(added !== 0 ? `تمت الإضافة — ${formatNumber(added)} قطعة` : 'تم الحفظ')
+      setForm((f) => ({ ...f, quantity_single: f.quantity_single + added }))
+      setDozens('')
+      setSingles('')
+      setImageFile(null)
+    } catch (err) {
+      setError(err.message ?? 'حدث خطأ غير متوقع')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    if (!confirm('حذف هذا المنتج نهائياً؟')) return
+    const { error } = await supabase.from('products').delete().eq('id', id)
+    if (error) return setError('تعذّر الحذف: ' + error.message)
+    navigate('/dashboard')
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
+  }
+
+  const field = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:outline-none'
+  const label = 'block text-sm font-semibold mb-1'
+
+  return (
+    <form onSubmit={save} className="mx-auto max-w-lg">
+      <div className="mb-4 flex items-center gap-2">
+        <Link to="/dashboard" className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="رجوع">
+          <ArrowRight className="size-5" />
+        </Link>
+        <h1 className="text-lg font-bold">{isNew ? 'منتج جديد' : 'تعديل المنتج'}</h1>
+        {!isNew && isAdmin && (
+          <button type="button" onClick={remove} className="ms-auto flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+            <Trash2 className="size-4" /> حذف
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-4 rounded-2xl bg-white p-4">
+        <div>
+          <label className={label} htmlFor="barcode">الباركود</label>
+          <div className="flex gap-2">
+            <input
+              id="barcode" dir="ltr" value={form.barcode}
+              onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+              placeholder="امسح أو اكتب يدوياً"
+              className={field + ' text-start'}
+            />
+            <button type="button" onClick={() => setScanning(true)} className="shrink-0 rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900" aria-label="مسح">
+              <ScanLine className="size-5" />
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className={label} htmlFor="name">اسم المنتج *</label>
+          <input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
+        </div>
+
+        <div>
+          <label className={label} htmlFor="category">الصنف *</label>
+          <select id="category" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} className={field}>
+            <option value="">— اختر الصنف —</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <span className={label}>صورة المنتج</span>
+          <div className="flex items-center gap-3">
+            {preview || form.image_url ? (
+              <img src={preview || form.image_url} alt="" className="size-20 rounded-xl object-cover" />
+            ) : (
+              <span className="flex size-20 items-center justify-center rounded-xl bg-slate-100">
+                <ImageOff className="size-6 text-slate-400" />
+              </span>
+            )}
+            <input ref={fileInput} type="file" accept="image/*" capture="environment" onChange={pickImage} className="hidden" />
+            <button type="button" onClick={() => fileInput.current?.click()} className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold hover:bg-slate-200">
+              <Camera className="size-4" /> {form.image_url || preview ? 'تغيير الصورة' : 'التقاط / اختيار'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 rounded-2xl bg-white p-4">
+        <div className="flex items-center gap-2 font-semibold">
+          <Boxes className="size-5 text-emerald-600" />
+          {isNew ? 'الكمية الأولى' : 'إضافة كمية'}
+          {!isNew && (
+            <span className="ms-auto text-sm font-normal text-slate-500">
+              الرصيد الحالي: {formatNumber(form.quantity_single)} قطعة
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={label} htmlFor="dozens">دزينة</label>
+            <input id="dozens" type="number" min="0" inputMode="numeric" value={dozens} onChange={(e) => setDozens(e.target.value)} placeholder="0" className={field} />
+          </div>
+          <div>
+            <label className={label} htmlFor="singles">مفرد</label>
+            <input id="singles" type="number" min="0" inputMode="numeric" value={singles} onChange={(e) => setSingles(e.target.value)} placeholder="0" className={field} />
+          </div>
+        </div>
+
+        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+          الإجمالي المضاف: {formatNumber(added)} قطعة
+          <span className="font-normal text-emerald-700"> ({formatNumber(Number(dozens) || 0)} × ١٢ + {formatNumber(Number(singles) || 0)})</span>
+        </p>
+      </div>
+
+      {isAdmin && (
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-white p-4">
+          <p className="col-span-2 text-sm font-semibold">الأسعار (د.ع) — تظهر للمدير فقط</p>
+          <div>
+            <label className={label} htmlFor="retail">سعر المفرد</label>
+            <input id="retail" type="number" min="0" inputMode="numeric" value={prices.price_retail} onChange={(e) => setPrices({ ...prices, price_retail: e.target.value })} placeholder="0" className={field} />
+          </div>
+          <div>
+            <label className={label} htmlFor="wholesale">سعر الجملة</label>
+            <input id="wholesale" type="number" min="0" inputMode="numeric" value={prices.price_wholesale} onChange={(e) => setPrices({ ...prices, price_wholesale: e.target.value })} placeholder="0" className={field} />
+          </div>
+          <p className="col-span-2 text-xs text-slate-500">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>
+        </div>
+      )}
+
+      {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {done && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{done}</p>}
+
+      <button
+        type="submit" disabled={busy}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="size-5 animate-spin" /> : <Save className="size-5" />}
+        {isNew ? 'حفظ المنتج' : 'حفظ التغييرات'}
+      </button>
+
+      {scanning && (
+        <Suspense fallback={null}>
+          <BarcodeScanner
+            onScan={(code) => { setForm((f) => ({ ...f, barcode: code })); setScanning(false) }}
+            onClose={() => setScanning(false)}
+          />
+        </Suspense>
+      )}
+    </form>
+  )
+}

@@ -1,15 +1,53 @@
-import { Store } from 'lucide-react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import Login from './pages/dashboard/Login'
+import Layout from './pages/dashboard/Layout'
+import Products from './pages/dashboard/Products'
+import ProductEditor from './pages/dashboard/ProductEditor'
 
-// المرحلة 1: أساس المشروع فقط. المتجر واللوحة والتوجيه (Router) في المرحلة 2.
+// إخفاء الصفحات عن غير أصحابها تجربةُ استخدام؛ الحماية الحقيقية في RLS.
+function ProtectedRoute({ children, adminOnly = false }) {
+  const { session, profile, loading, isAdmin } = useAuth()
+
+  if (loading) {
+    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-emerald-600" /></div>
+  }
+  if (!session) return <Navigate to="/dashboard/login" replace />
+  if (!profile) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-slate-600">
+        حسابك غير مرتبط بملف موظف. راجع المدير.
+      </div>
+    )
+  }
+  if (adminOnly && !isAdmin) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-slate-600">
+        هذه الصفحة للمدير فقط.
+      </div>
+    )
+  }
+  return children
+}
+
 export default function App() {
   return (
-    <main className="min-h-dvh flex flex-col items-center justify-center gap-3 p-6 text-center">
-      <Store className="size-10 text-emerald-600" />
-      <h1 className="text-2xl font-bold">أسواق الرفاعي</h1>
-      <p className="text-slate-600">الرمادي – شارع السينما – فرع الشورجة</p>
-      <p className="mt-4 rounded-lg bg-emerald-50 px-4 py-2 text-emerald-800">
-        الأساس جاهز ✓ — بانتظار المرحلة الثانية
-      </p>
-    </main>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* المتجر العام — المرحلة 3 */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          <Route path="/dashboard/login" element={<Login />} />
+          <Route path="/dashboard" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route index element={<Products />} />
+            <Route path="product/:id" element={<ProductEditor />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   )
 }
