@@ -4,7 +4,7 @@ import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X } from 'l
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
-import { STORE, asset } from '../../lib/store'
+import { STORE, asset, contactWhatsappUrl, telUrl } from '../../lib/store'
 import ProductCard from '../../components/ProductCard'
 import ContactCard, { FloatingWhatsapp } from '../../components/ContactCard'
 
@@ -121,10 +121,25 @@ export default function Catalog({ mode }) {
 
         {loading ? (
           <div className="flex justify-center py-24"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
+        ) : products.length === 0 ? (
+          // متجر بلا بضاعة بعد — رسالة مطمئنة بدل «لا نتائج» الجافة
+          <div className="animate-fade-up card p-8 text-center">
+            <img src={asset('logo-mark.png')} alt="" className="mx-auto mb-3 size-16 opacity-90" />
+            <p className="text-lg font-extrabold">البضاعة تُضاف الآن</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+              نجهّز المعروض ونصوّره منتجاً منتجاً. تواصل معنا وأخبرنا بما تريد
+              ونوفّره لك حالاً.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <a href={contactWhatsappUrl()} target="_blank" rel="noopener noreferrer"
+                 className="rounded-2xl bg-brand-600 py-3 text-sm font-bold text-white">راسلنا واتساب</a>
+              <a href={telUrl()} className="rounded-2xl bg-slate-900 py-3 text-sm font-bold text-white">اتصل بنا</a>
+            </div>
+          </div>
         ) : shown.length === 0 ? (
           <div className="animate-fade-up card p-12 text-center text-slate-500">
             <PackageSearch className="mx-auto mb-3 size-10 text-slate-300" />
-            لا توجد منتجات مطابقة.
+            لا توجد منتجات مطابقة لبحثك.
           </div>
         ) : (
           <>
