@@ -154,10 +154,10 @@ export default function ProductEditor() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
+    return <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
   }
 
-  const field = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:outline-none'
+  const field = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-brand-500 focus:outline-none'
   const label = 'block text-sm font-semibold mb-1'
 
   return (
@@ -223,7 +223,7 @@ export default function ProductEditor() {
 
       <div className="mt-4 grid gap-3 rounded-2xl bg-white p-4">
         <div className="flex items-center gap-2 font-semibold">
-          <Boxes className="size-5 text-emerald-600" />
+          <Boxes className="size-5 text-brand-600" />
           {isNew ? 'الكمية الأولى' : 'إضافة كمية'}
           {!isNew && (
             <span className="ms-auto text-sm font-normal text-slate-500">
@@ -243,9 +243,9 @@ export default function ProductEditor() {
           </div>
         </div>
 
-        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+        <p className="rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-900">
           الإجمالي المضاف: {formatNumber(added)} قطعة
-          <span className="font-normal text-emerald-700"> ({formatNumber(Number(dozens) || 0)} × ١٢ + {formatNumber(Number(singles) || 0)})</span>
+          <span className="font-normal text-brand-700"> ({formatNumber(Number(dozens) || 0)} × ١٢ + {formatNumber(Number(singles) || 0)})</span>
         </p>
       </div>
 
@@ -265,11 +265,11 @@ export default function ProductEditor() {
       )}
 
       {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {done && <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{done}</p>}
+      {done && <p className="mt-4 rounded-lg bg-brand-50 p-3 text-sm text-brand-900">{done}</p>}
 
       <button
         type="submit" disabled={busy}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
       >
         {busy ? <Loader2 className="size-5 animate-spin" /> : <Save className="size-5" />}
         {isNew ? 'حفظ المنتج' : 'حفظ التغييرات'}

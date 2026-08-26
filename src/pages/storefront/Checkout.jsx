@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
 import { buildOrderMessage, whatsappUrl, storePhoneConfigured } from '../../lib/whatsapp'
+import ContactCard from '../../components/ContactCard'
 
 export default function Checkout() {
   const cart = useCart()
@@ -81,14 +82,14 @@ export default function Checkout() {
   if (result) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-5 text-center">
-        <CheckCircle2 className="animate-pop mx-auto size-16 text-emerald-600" />
+        <CheckCircle2 className="animate-pop mx-auto size-16 text-brand-600" />
         <div className="animate-fade-up">
           <h1 className="text-xl font-bold">تم استلام طلبك</h1>
           <p className="mt-1 text-slate-600">رقم الطلب</p>
-          <p className="text-3xl font-bold text-emerald-700">#{result.order_number}</p>
+          <p className="text-3xl font-bold text-brand-700">#{result.order_number}</p>
         </div>
 
-        <div className="animate-fade-up rounded-2xl bg-white p-4 text-start text-sm" style={{ animationDelay: '80ms' }}>
+        <div className="animate-fade-up card p-4 text-start text-sm" style={{ animationDelay: '80ms' }}>
           <Row label="مجموع البضاعة" value={formatIQD(result.subtotal)} />
           <Row label={`التوصيل — ${result.delivery_zone}`} value={formatIQD(result.delivery_fee)} />
           <div className="mt-2 border-t border-slate-200 pt-2">
@@ -102,13 +103,14 @@ export default function Checkout() {
 
         <a
           href={whatsappUrl(buildOrderMessage(result))}
-          className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 font-bold text-white active:scale-95"
+          className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 font-bold text-white active:scale-95"
           style={{ animationDelay: '200ms' }}
         >
           <MessageCircle className="size-5" /> إرسال الطلب عبر واتساب
         </a>
 
         <Link to="/" className="text-sm font-semibold text-slate-500">العودة للمتجر</Link>
+        <ContactCard className="mt-2 text-start" />
       </main>
     )
   }
@@ -118,21 +120,21 @@ export default function Checkout() {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 p-5 text-center">
         <p className="text-slate-500">سلّتك فارغة.</p>
-        <Link to={backTo} className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white">تصفّح المنتجات</Link>
+        <Link to={backTo} className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white">تصفّح المنتجات</Link>
       </main>
     )
   }
 
   if (loading) {
-    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-emerald-600" /></div>
+    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
   }
 
-  const field = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 focus:border-emerald-500 focus:outline-none'
+  const field = 'w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none'
   const label = 'block text-sm font-semibold mb-1'
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-md pb-28">
-      <header className="sticky top-0 z-20 flex items-center gap-2 bg-white p-3 shadow-sm">
+      <header className="glass sticky top-0 z-20 flex items-center gap-2 p-3">
         <button type="button" onClick={() => navigate(backTo)} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="رجوع">
           <ArrowRight className="size-5" />
         </button>
@@ -147,7 +149,7 @@ export default function Checkout() {
           const qty = cart.items[p.id] ?? 0
           const price = priceOf(p)
           return (
-            <div key={p.id} className="animate-fade-up flex items-center gap-3 rounded-2xl bg-white p-3">
+            <div key={p.id} className="animate-fade-up card flex items-center gap-3 p-3">
               {p.image_url ? (
                 <img src={p.image_url} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
               ) : (
@@ -158,7 +160,7 @@ export default function Checkout() {
                 <p className="text-xs text-slate-500">
                   {isWholesale ? `${formatNumber(qty / 12)} درزن (${formatNumber(qty)} قطعة)` : `${formatNumber(qty)} قطعة`}
                 </p>
-                <p className="text-sm font-bold text-emerald-700">
+                <p className="text-sm font-bold text-brand-700">
                   {price === 0 ? 'السعر عند الطلب' : formatIQD(price * qty)}
                 </p>
               </div>
@@ -201,7 +203,7 @@ export default function Checkout() {
         </div>
       </div>
 
-      <div className="mx-3 rounded-2xl bg-white p-4 text-sm">
+      <div className="card mx-3 p-4 text-sm">
         <Row label="مجموع البضاعة" value={formatIQD(subtotal)} />
         <Row
           label={<span className="flex items-center gap-1"><Truck className="size-4" /> التوصيل</span>}
@@ -222,9 +224,9 @@ export default function Checkout() {
       )}
       {error && <p className="mx-3 mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md bg-white p-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+      <div className="glass fixed inset-x-0 bottom-0 mx-auto max-w-md p-3">
         <button type="submit" disabled={busy}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3.5 font-bold text-white active:scale-95 disabled:opacity-60">
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 font-bold text-white active:scale-95 disabled:opacity-60">
           {busy ? <Loader2 className="size-5 animate-spin" /> : <MessageCircle className="size-5" />}
           إرسال الطلب عبر واتساب
         </button>
@@ -237,7 +239,7 @@ function Row({ label, value, bold }) {
   return (
     <div className={`flex items-center justify-between py-1 ${bold ? 'text-base font-bold' : 'text-slate-600'}`}>
       <span>{label}</span>
-      <span className={bold ? 'text-emerald-700' : 'font-semibold text-slate-800'}>{value}</span>
+      <span className={bold ? 'text-brand-700' : 'font-semibold text-slate-800'}>{value}</span>
     </div>
   )
 }

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, ShoppingCart, Loader2, PackageSearch, ArrowRight } from 'lucide-react'
+import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
+import { STORE } from '../../lib/store'
 import ProductCard from '../../components/ProductCard'
+import ContactCard, { FloatingWhatsapp } from '../../components/ContactCard'
 
 export default function Catalog({ mode }) {
   const navigate = useNavigate()
@@ -25,10 +27,19 @@ export default function Catalog({ mode }) {
       supabase.from('categories').select('id, name').order('sort_order'),
     ]).then(([p, c]) => {
       if (p.error) setError('تعذّر تحميل المنتجات. تحقق من الاتصال بالإنترنت.')
-      setProducts(p.data ?? [])
+      const list = p.data ?? []
+      setProducts(list)
       setCategories(c.data ?? [])
       setLoading(false)
+
+      // تنظيف السلة من منتجات لم تعد موجودة (حُذفت أو أُوقفت) حتى لا يعلق
+      // الزبون عند الدفع برسالة «منتج غير متوفر».
+      if (list.length) {
+        const live = new Set(list.map((x) => x.id))
+        Object.keys(cart.items).forEach((id) => { if (!live.has(id)) cart.setQty(id, 0) })
+      }
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const shown = products.filter((p) => {
@@ -38,94 +49,128 @@ export default function Catalog({ mode }) {
 
   const subtotal = products.reduce((sum, p) => {
     const qty = cart.items[p.id] ?? 0
-    const price = mode === 'wholesale' ? p.price_wholesale : p.price_retail
-    return sum + qty * price
+    return sum + qty * (mode === 'wholesale' ? p.price_wholesale : p.price_retail)
   }, 0)
 
   const isWholesale = mode === 'wholesale'
+  const accent = isWholesale
+    ? 'from-amber-500 to-orange-600'
+    : 'from-brand-500 to-brand-700'
 
   return (
-    <div className="min-h-dvh pb-24">
-      <header className={`sticky top-0 z-20 ${isWholesale ? 'bg-amber-600' : 'bg-emerald-600'} text-white`}>
-        <div className="mx-auto flex max-w-3xl items-center gap-2 p-3">
-          <Link to="/" className="rounded-lg p-1.5 hover:bg-white/15" aria-label="رجوع">
-            <ArrowRight className="size-5" />
-          </Link>
-          <div className="min-w-0">
-            <p className="font-bold leading-tight">أسواق الرفاعي</p>
-            <p className="text-xs text-white/80">{isWholesale ? 'أسعار الجملة — بالدرزن' : 'أسعار المفرد — بالقطعة'}</p>
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-3xl px-3 pb-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-slate-400" />
-            <input
-              value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="ابحث عن منتج…"
-              className="w-full rounded-xl py-2.5 pe-3 ps-9 text-slate-900 outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-3 pb-3">
-          {[{ id: '', name: 'الكل' }, ...categories].map((c) => (
-            <button
-              key={c.id || 'all'}
-              onClick={() => setCategoryId(String(c.id))}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
-                String(c.id) === categoryId ? 'bg-white text-slate-900' : 'bg-white/15 text-white'
-              }`}
+    <div className="min-h-dvh pb-28">
+      <header className="sticky top-0 z-30">
+        <div className={`bg-gradient-to-l ${accent} text-white`}>
+          <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pb-3 pt-4">
+            <Link to="/" className="rounded-xl p-1.5 transition hover:bg-white/15" aria-label="رجوع">
+              <ChevronRight className="size-5" />
+            </Link>
+            <img src="/icon-192.png" alt="" className="size-9 rounded-xl ring-2 ring-white/25" />
+            <div className="min-w-0">
+              <p className="font-extrabold leading-tight">{STORE.name}</p>
+              <p className="text-[11px] text-white/85">
+                {isWholesale ? 'أسعار الجملة — بالدرزن' : 'أسعار المفرد — بالقطعة'}
+              </p>
+            </div>
+            <Link
+              to={isWholesale ? '/retail' : '/wholesale'}
+              className="ms-auto shrink-0 rounded-full bg-white/20 px-3 py-1.5 text-[11px] font-bold backdrop-blur-sm transition hover:bg-white/30"
             >
-              {c.name}
-            </button>
-          ))}
+              {isWholesale ? 'تحويل للمفرد' : 'تحويل للجملة'}
+            </Link>
+          </div>
+
+          <div className="mx-auto max-w-3xl px-4 pb-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute inset-y-0 start-3.5 my-auto size-4 text-slate-400" />
+              <input
+                value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="ابحث عن منتج…"
+                className="w-full rounded-2xl bg-white py-3 pe-10 ps-10 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400"
+              />
+              {query && (
+                <button onClick={() => setQuery('')} className="absolute inset-y-0 end-3 my-auto text-slate-400" aria-label="مسح">
+                  <X className="size-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="glass">
+          <div className="no-scrollbar mx-auto flex max-w-3xl gap-2 overflow-x-auto px-4 py-2.5">
+            {[{ id: '', name: 'الكل' }, ...categories].map((c) => (
+              <button
+                key={c.id || 'all'}
+                onClick={() => setCategoryId(String(c.id))}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold transition ${
+                  String(c.id) === categoryId
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-600 ring-1 ring-slate-900/5 hover:bg-slate-50'
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl p-3">
-        {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <main className="mx-auto max-w-3xl px-4 pt-4">
+        {error && <p className="rounded-2xl bg-red-50 p-4 text-sm text-red-700 ring-1 ring-red-600/10">{error}</p>}
 
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="size-8 animate-spin text-emerald-600" /></div>
+          <div className="flex justify-center py-24"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
         ) : shown.length === 0 ? (
-          <div className="animate-fade-up rounded-2xl bg-white p-10 text-center text-slate-500">
-            <PackageSearch className="mx-auto mb-2 size-9 text-slate-300" />
+          <div className="animate-fade-up card p-12 text-center text-slate-500">
+            <PackageSearch className="mx-auto mb-3 size-10 text-slate-300" />
             لا توجد منتجات مطابقة.
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {shown.map((p, i) => (
-              <ProductCard
-                key={p.id} product={p} mode={mode} index={i}
-                qty={cart.items[p.id] ?? 0}
-                onChange={(q) => cart.setQty(p.id, q)}
-              />
-            ))}
-          </div>
+          <>
+            <p className="mb-3 text-xs font-semibold text-slate-400">{formatNumber(shown.length)} منتج</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {shown.map((p, i) => (
+                <ProductCard
+                  key={p.id} product={p} mode={mode} index={i}
+                  qty={cart.items[p.id] ?? 0}
+                  onChange={(q) => cart.setQty(p.id, q)}
+                />
+              ))}
+            </div>
+          </>
         )}
+
+        <ContactCard className="mt-8" />
+        <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} {STORE.name}</p>
       </main>
 
-      {/* شريط السلة السفلي — الإبهام يصله بسهولة على الجوال */}
+      {cart.count === 0 && <FloatingWhatsapp />}
+
+      {/* شريط السلة العائم — تحت الإبهام مباشرة على الجوال */}
       {cart.count > 0 && (
-        <button
-          onClick={() => navigate('/checkout')}
-          className="animate-fade-up fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-3xl items-center gap-3 bg-slate-900 p-4 text-white"
-        >
-          <span className="relative">
-            <ShoppingCart className="size-6" />
-            <span className="absolute -top-1.5 -end-1.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-[11px] font-bold">
-              {formatNumber(cart.count)}
+        <div className="fixed inset-x-0 bottom-0 z-40 p-3">
+          <button
+            onClick={() => navigate('/checkout')}
+            className="animate-rise mx-auto flex w-full max-w-md items-center gap-3 rounded-3xl bg-slate-900 p-3 text-white shadow-2xl shadow-slate-900/25 transition active:scale-[0.98]"
+          >
+            <span className="relative flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/10">
+              <ShoppingCart className="size-5" />
+              <span className="absolute -top-1 -end-1 flex size-5 items-center justify-center rounded-full bg-brand-500 text-[10px] font-extrabold ring-2 ring-slate-900">
+                {formatNumber(cart.count)}
+              </span>
             </span>
-          </span>
-          <span className="text-start">
-            <span className="block text-xs text-white/70">
-              {isWholesale ? `${formatNumber(cart.units / 12)} درزن` : `${formatNumber(cart.units)} قطعة`}
+            <span className="min-w-0 text-start">
+              <span className="block text-[11px] text-white/60">
+                {isWholesale ? `${formatNumber(cart.units / 12)} درزن` : `${formatNumber(cart.units)} قطعة`}
+              </span>
+              <span className="block font-extrabold tracking-tight">{formatIQD(subtotal)}</span>
             </span>
-            <span className="block font-bold">{formatIQD(subtotal)}</span>
-          </span>
-          <span className="ms-auto rounded-xl bg-emerald-600 px-4 py-2 font-semibold">إتمام الطلب</span>
-        </button>
+            <span className="ms-auto shrink-0 rounded-2xl bg-brand-600 px-4 py-2.5 text-sm font-bold">
+              إتمام الطلب
+            </span>
+          </button>
+        </div>
       )}
     </div>
   )

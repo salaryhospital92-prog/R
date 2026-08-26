@@ -15,7 +15,7 @@ function ProtectedRoute({ children, adminOnly = false }) {
   const { session, profile, loading, isAdmin } = useAuth()
 
   if (loading) {
-    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-emerald-600" /></div>
+    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
   }
   if (!session) return <Navigate to="/dashboard/login" replace />
   if (!profile) {

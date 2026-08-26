@@ -3,29 +3,54 @@
 @theme {
   --font-sans: "Cairo", system-ui, sans-serif;
 
-  --animate-fade-up: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-slide-in: slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-pop: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --color-brand-50:  #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-900: #064e3b;
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-rise: rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: none; }
 }
-@keyframes slide-in {
-  from { transform: translateX(-100%); }   /* RTL: السلة تدخل من اليسار */
-  to   { transform: none; }
-}
 @keyframes pop {
-  0%   { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1);   opacity: 1; }
+  from { opacity: 0; transform: scale(0.82); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: none; }
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 font-sans;
+  @apply font-sans text-slate-900 antialiased;
+  background:
+    radial-gradient(60rem 40rem at 110% -10%, #d1fae5 0%, transparent 55%),
+    radial-gradient(50rem 35rem at -10% 5%, #e0f2fe 0%, transparent 50%),
+    #f8fafc;
+  background-attachment: fixed;
+  /* أمان الشاشات ذات الحواف المنحنية (iPhone) */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* احترام تفضيل تقليل الحركة — إلزامي لسهولة الوصول */
+@utility card {
+  @apply rounded-3xl bg-white/90 ring-1 ring-slate-900/5 backdrop-blur-sm;
+}
+
+@utility glass {
+  @apply bg-white/75 backdrop-blur-xl ring-1 ring-slate-900/5;
+}
+
+/* شريط تمرير أنحف للأصناف الأفقية */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

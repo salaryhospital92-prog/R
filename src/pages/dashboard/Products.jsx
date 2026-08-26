@@ -65,7 +65,7 @@ export default function Products() {
           </button>
           <Link
             to="/dashboard/product/new"
-            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
             <Plus className="size-4" /> منتج جديد
           </Link>
@@ -79,13 +79,13 @@ export default function Products() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="ابحث بالاسم أو الباركود…"
-            className="w-full rounded-xl border border-slate-300 py-2 pe-3 ps-9 focus:border-emerald-500 focus:outline-none"
+            className="w-full rounded-xl border border-slate-300 py-2 pe-3 ps-9 focus:border-brand-500 focus:outline-none"
           />
         </div>
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
+          className="rounded-xl border border-slate-300 px-3 py-2 focus:border-brand-500 focus:outline-none"
         >
           <option value="">كل الأصناف</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -95,7 +95,7 @@ export default function Products() {
       {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
+        <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
       ) : shown.length === 0 ? (
         <div className="rounded-2xl bg-white p-10 text-center text-slate-500">
           <Package className="mx-auto mb-2 size-8 text-slate-300" />
@@ -124,7 +124,7 @@ export default function Products() {
                     {p.barcode && <span dir="ltr"> · {p.barcode}</span>}
                   </p>
                   {isAdmin && p.product_prices && (
-                    <p className="mt-0.5 text-xs text-emerald-700">
+                    <p className="mt-0.5 text-xs text-brand-700">
                       مفرد: {p.product_prices.price_retail > 0 ? formatIQD(p.product_prices.price_retail) : 'عند الطلب'}
                       {' · '}
                       جملة: {p.product_prices.price_wholesale > 0 ? formatIQD(p.product_prices.price_wholesale) : 'عند الطلب'}
@@ -134,7 +134,7 @@ export default function Products() {
 
                 <span
                   className={`shrink-0 rounded-lg px-2.5 py-1 text-sm font-bold ${
-                    p.quantity_single > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                    p.quantity_single > 0 ? 'bg-brand-50 text-brand-700' : 'bg-red-50 text-red-700'
                   }`}
                 >
                   {formatNumber(p.quantity_single)} قطعة
