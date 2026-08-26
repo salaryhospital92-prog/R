@@ -25,6 +25,13 @@ React (Vite) · Tailwind CSS v4 · Lucide React · html5-qrcode · Supabase (Pos
 بعد انتشار السجلات (دقائق إلى ساعة) يُصدر GitHub شهادة HTTPS تلقائياً،
 ثم يُفعَّل «Enforce HTTPS» من إعدادات Pages.
 
+### الشعار والأيقونات
+المصدر `logo.png` في جذر المشروع (1254×1254). المشتقات في `public/`:
+`logo.png` (الشعار كاملاً بخلفية شفافة) · `logo-mark.png` (الرمز وحده) ·
+`icon-192/512.png` و`icon-maskable-512.png` (أيقونات PWA) ·
+`apple-touch-icon.png` · `favicon.png`.
+لتغيير الشعار: استبدل `logo.png` وأعد توليد المشتقات بنفس المقاسات.
+
 ### صورة معاينة الرابط
 `public/og.jpg` (1200×630) مع وسوم Open Graph في `index.html` — تظهر بطاقة
 المتجر عند مشاركة الرابط في واتساب وتيليغرام وفيسبوك. لتغييرها: استبدل الصورة
