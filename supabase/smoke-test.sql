@@ -46,12 +46,12 @@ begin
      and (select price_wholesale from public.storefront_products where id = v_prod) =  6000,
     'فشل: العرض لا يقدّم سعرَي المفرد والجملة';
 
-  -- 4) منطق الدزينة: 2 دزينة + 3 مفرد = 27 قطعة
+  -- 4) منطق الدرزن: 2 درزن + 3 مفرد = 27 قطعة
   insert into public.stock_movements (product_id, type, dozen_qty, singles_qty, created_by)
   values (v_prod, 'stock_in', 2, 3, v_entry);
 
   select quantity_single into v_qty from public.products where id = v_prod;
-  assert v_qty = 27, format('فشل: حساب الدزينة أعطى %s بدل 27', v_qty);
+  assert v_qty = 27, format('فشل: حساب الدرزن أعطى %s بدل 27', v_qty);
 
   -- 5) منع الرصيد السالب برسالة عربية
   begin
@@ -64,11 +64,15 @@ begin
 
   -- 6) طلب مفرد: المجموع يُحسب من القاعدة (3 × 10٬000 = 30٬000)
   v_res := public.create_order('زبون تجريبي', '07701234567',
-             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 3)), 'retail');
+             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 3)), 'retail', 1);
   v_ord := (v_res->>'order_id')::uuid;
 
-  assert (v_res->>'total_amount')::bigint = 30000,
-    format('فشل: مجموع المفرد %s بدل 30000', v_res->>'total_amount');
+  assert (v_res->>'subtotal')::bigint = 30000,
+    format('فشل: مجموع البضاعة %s بدل 30000', v_res->>'subtotal');
+  -- أجرة التوصيل تُقرأ من الخادم وتُضاف: 30٬000 + 3٬000 = 33٬000
+  assert (v_res->>'delivery_fee')::bigint = 3000, 'فشل: أجرة التوصيل لم تُقرأ من المنطقة';
+  assert (v_res->>'total_amount')::bigint = 33000,
+    format('فشل: المجموع الكلي %s بدل 33000', v_res->>'total_amount');
   assert (v_res->'items'->0->>'unit_price')::bigint = 10000,
     'فشل: السعر المحفوظ لا يطابق سعر القاعدة';
 
@@ -78,9 +82,10 @@ begin
 
   -- 8) طلب جملة يقرأ سعر الجملة (2 × 6٬000 = 12٬000) والمخزون 24 − 2 = 22
   v_res := public.create_order('زبون جملة', '07701234567',
-             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 2)), 'wholesale');
-  assert (v_res->>'total_amount')::bigint = 12000,
-    format('فشل: مجموع الجملة %s بدل 12000', v_res->>'total_amount');
+             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 2)), 'wholesale', 14);
+  assert (v_res->>'subtotal')::bigint = 12000,
+    format('فشل: مجموع الجملة %s بدل 12000', v_res->>'subtotal');
+  assert (v_res->>'delivery_fee')::bigint = 0, 'فشل: «استلام من المحل» يجب أن تكون بلا أجرة';
   assert (v_res->>'mode') = 'wholesale', 'فشل: وضع البيع لم يُحفظ';
 
   select quantity_single into v_qty from public.products where id = v_prod;
@@ -102,15 +107,15 @@ begin
   insert into public.stock_movements (product_id, type, singles_qty) values (v_ask, 'stock_in', 5);
 
   v_res := public.create_order('زبون', '07701234567',
-             jsonb_build_array(jsonb_build_object('product_id', v_ask, 'qty', 2)), 'retail');
-  assert (v_res->>'total_amount')::bigint = 0, 'فشل: مجموع بند بلا سعر ليس 0';
+             jsonb_build_array(jsonb_build_object('product_id', v_ask, 'qty', 2)), 'retail', 14);
+  assert (v_res->>'subtotal')::bigint = 0, 'فشل: مجموع بند بلا سعر ليس 0';
   assert (v_res->>'has_price_request')::boolean, 'فشل: لم تُرفع علامة «السعر عند الطلب»';
   assert (v_res->'items'->0->>'price_on_request')::boolean, 'فشل: البند غير معلّم';
 
   -- 12) رفض كمية أكبر من المخزون
   begin
     perform public.create_order('زبون', '07701234567',
-              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 999)), 'retail');
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 999)), 'retail', 1);
     raise exception 'فشل: قُبل طلب يتجاوز المخزون';
   exception when others then
     if position('غير متوفرة' in sqlerrm) = 0 then raise; end if;
@@ -119,7 +124,7 @@ begin
   -- 13) رفض هاتف غير صالح ووضع بيع غير معروف
   begin
     perform public.create_order('زبون', '123',
-              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'retail');
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'retail', 1);
     raise exception 'فشل: قُبل رقم هاتف غير صالح';
   exception when others then
     if position('هاتف صحيح' in sqlerrm) = 0 then raise; end if;
@@ -127,10 +132,19 @@ begin
 
   begin
     perform public.create_order('زبون', '07701234567',
-              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'hack');
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'hack', 1);
     raise exception 'فشل: قُبل وضع بيع غير معروف';
   exception when others then
     if position('نوع البيع' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  -- منطقة توصيل غير موجودة تُرفض (لا يستطيع المتصفح فرض أجرة من عنده)
+  begin
+    perform public.create_order('زبون', '07701234567',
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'retail', 9999);
+    raise exception 'فشل: قُبلت منطقة توصيل غير موجودة';
+  exception when others then
+    if position('منطقة التوصيل' in sqlerrm) = 0 then raise; end if;
   end;
 
   -- 14) RLS: موظف الإدخال لا يرى أي سعر ولا أي طلب
@@ -156,7 +170,7 @@ begin
   assert v_cnt >= 1, 'فشل: المدير لا يرى الطلبات';
 
   reset role;
-  raise notice '✅ كل الفحوصات نجحت (15 فحصاً) — المخطط سليم.';
+  raise notice '✅ كل الفحوصات نجحت (17 فحصاً) — المخطط سليم.';
 end $$;
 
 rollback;

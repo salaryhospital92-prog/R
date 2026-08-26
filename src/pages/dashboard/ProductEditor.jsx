@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
-import { uploadProductImage } from '../../lib/image'
+import { uploadProductImage, deleteProductImage } from '../../lib/image'
 import { useAuth } from '../../context/AuthContext'
 
 // html5-qrcode مكتبة ثقيلة (~400KB) — تُحمَّل عند فتح الماسح فقط
@@ -149,6 +149,7 @@ export default function ProductEditor() {
     if (!confirm('حذف هذا المنتج نهائياً؟')) return
     const { error } = await supabase.from('products').delete().eq('id', id)
     if (error) return setError('تعذّر الحذف: ' + error.message)
+    await deleteProductImage(id)   // حتى لا تبقى الصورة تشغل مساحة بلا منتج
     navigate('/dashboard')
   }
 
@@ -233,7 +234,7 @@ export default function ProductEditor() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={label} htmlFor="dozens">دزينة</label>
+            <label className={label} htmlFor="dozens">درزن</label>
             <input id="dozens" type="number" min="0" inputMode="numeric" value={dozens} onChange={(e) => setDozens(e.target.value)} placeholder="0" className={field} />
           </div>
           <div>

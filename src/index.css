@@ -2,8 +2,33 @@
 
 @theme {
   --font-sans: "Cairo", system-ui, sans-serif;
+
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-in: slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes slide-in {
+  from { transform: translateX(-100%); }   /* RTL: السلة تدخل من اليسار */
+  to   { transform: none; }
+}
+@keyframes pop {
+  0%   { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
 }
 
 body {
   @apply bg-slate-50 text-slate-900 font-sans;
+}
+
+/* احترام تفضيل تقليل الحركة — إلزامي لسهولة الوصول */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -159,7 +159,7 @@ grant select on public.storefront_products to anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
--- 5) حركات المخزون — سجل تدقيق لكل تغيير كمية (منطق الدزينة هنا)
+-- 5) حركات المخزون — سجل تدقيق لكل تغيير كمية (منطق الدرزن هنا)
 --    لا تُعدَّل products.quantity_single يدوياً أبداً — فقط عبر هذا الجدول.
 -- ---------------------------------------------------------------------
 create table if not exists public.stock_movements (
@@ -215,6 +215,32 @@ create trigger trg_apply_stock_movement
 -- ---------------------------------------------------------------------
 -- 6) الطلبات — رقم متسلسل بشري + لقطة أسعار مقفلة وقت الطلب
 -- ---------------------------------------------------------------------
+-- مناطق التوصيل وأجورها — يقرؤها المتجر، ويديرها المدير
+create table if not exists public.delivery_zones (
+  id         serial primary key,
+  name       text   not null unique,
+  fee        bigint not null default 0 check (fee >= 0),   -- أجرة التوصيل بالدينار
+  sort_order int    not null default 0,
+  is_active  boolean not null default true
+);
+
+insert into public.delivery_zones (name, fee, sort_order) values
+  ('الرمادي — داخل المدينة',  3000,  1),
+  ('الخالدية',                5000,  2),
+  ('الحبانية',                5000,  3),
+  ('الفلوجة',                 7000,  4),
+  ('هيت',                     8000,  5),
+  ('حديثة',                  10000,  6),
+  ('البغدادي',                8000,  7),
+  ('عنه',                    12000,  8),
+  ('راوة',                   12000,  9),
+  ('القائم',                 15000, 10),
+  ('الرطبة',                 15000, 11),
+  ('بغداد',                  10000, 12),
+  ('باقي المحافظات',         15000, 13),
+  ('استلام من المحل',            0, 14)
+on conflict (name) do nothing;
+
 create sequence if not exists public.order_number_seq start 1050;
 
 create table if not exists public.orders (
@@ -223,13 +249,21 @@ create table if not exists public.orders (
   customer_name  text   not null,
   customer_phone text   not null,
   mode           text   not null default 'retail' check (mode in ('retail','wholesale')),
-  total_amount   bigint not null check (total_amount >= 0),
+  subtotal       bigint not null default 0 check (subtotal >= 0),      -- مجموع البضاعة
+  delivery_zone  text,                                                 -- لقطة اسم المنطقة
+  delivery_fee   bigint not null default 0 check (delivery_fee >= 0),
+  customer_note  text,                                                 -- أقرب نقطة دالة
+  total_amount   bigint not null check (total_amount >= 0),            -- البضاعة + التوصيل
   items_json     jsonb  not null,     -- لقطة مقفلة: الاسم والسعر والكمية وقت الطلب
   status         public.order_status not null default 'new',
   created_at     timestamptz not null default now()
 );
 
-alter table public.orders add column if not exists mode text not null default 'retail';
+alter table public.orders add column if not exists mode          text   not null default 'retail';
+alter table public.orders add column if not exists subtotal      bigint not null default 0;
+alter table public.orders add column if not exists delivery_zone text;
+alter table public.orders add column if not exists delivery_fee  bigint not null default 0;
+alter table public.orders add column if not exists customer_note text;
 do $$ begin
   alter table public.orders add constraint orders_mode_check
     check (mode in ('retail','wholesale'));
@@ -252,13 +286,17 @@ exception when duplicate_object then null; end $$;
 --    ورابط واتساب يُبنى في الواجهة من ردّ هذه الدالة حصراً.
 -- ---------------------------------------------------------------------
 -- الوضع (mode): 'retail' مفرد أو 'wholesale' جملة — يحدد أي سعر يُقرأ.
+-- أجرة التوصيل تُقرأ من delivery_zones في الخادم، لا تُرسل من المتصفح.
 drop function if exists public.create_order(text, text, jsonb);
+drop function if exists public.create_order(text, text, jsonb, text);
 
 create or replace function public.create_order(
   p_customer_name  text,
   p_customer_phone text,
   p_items          jsonb,           -- [{"product_id":"...","qty":2}, ...]
-  p_mode           text default 'retail'
+  p_mode           text default 'retail',
+  p_zone_id        int  default null,
+  p_note           text default null
 )
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -269,13 +307,25 @@ declare
   v_price bigint;
   v_name  text;
   v_stock int;
-  v_total bigint := 0;
+  v_sub   bigint := 0;
+  v_fee   bigint := 0;
+  v_zone  text;
   v_ask   boolean := false;   -- هل يحتوي الطلب بنداً «السعر عند الطلب»؟
   v_lines jsonb  := '[]'::jsonb;
   v_order public.orders;
 begin
   if p_mode is null or p_mode not in ('retail', 'wholesale') then
     raise exception 'نوع البيع غير صالح';
+  end if;
+
+  if p_zone_id is not null then
+    select name, fee into v_zone, v_fee
+      from public.delivery_zones where id = p_zone_id and is_active;
+    if v_zone is null then
+      raise exception 'منطقة التوصيل غير متاحة';
+    end if;
+  else
+    raise exception 'الرجاء اختيار منطقة التوصيل';
   end if;
   if p_customer_name is null or length(trim(p_customer_name)) < 2 then
     raise exception 'الرجاء إدخال اسم الزبون';
@@ -318,7 +368,7 @@ begin
     -- سعر 0 = «السعر عند الطلب»: البند يُحفظ ويُحجز، ويسعّره المدير عند التأكيد
     if v_price = 0 then v_ask := true; end if;
 
-    v_total := v_total + v_price * v_qty;
+    v_sub := v_sub + v_price * v_qty;
     v_lines := v_lines || jsonb_build_object(
       'product_id',       v_id,
       'name',             v_name,
@@ -328,8 +378,12 @@ begin
       'price_on_request', (v_price = 0));
   end loop;
 
-  insert into public.orders (customer_name, customer_phone, total_amount, items_json, mode)
-  values (trim(p_customer_name), trim(p_customer_phone), v_total, v_lines, p_mode)
+  insert into public.orders (customer_name, customer_phone, mode, subtotal,
+                             delivery_zone, delivery_fee, customer_note,
+                             total_amount, items_json)
+  values (trim(p_customer_name), trim(p_customer_phone), p_mode, v_sub,
+          v_zone, v_fee, nullif(trim(coalesce(p_note, '')), ''),
+          v_sub + v_fee, v_lines)
   returning * into v_order;
 
   -- قرار المالك: الخصم فور إرسال الطلب (يمنع بيع نفس القطعة مرتين).
@@ -342,17 +396,20 @@ begin
   end loop;
 
   return jsonb_build_object(
-    'order_id',         v_order.id,
-    'order_number',     v_order.order_number,
-    'mode',             v_order.mode,
-    'total_amount',     v_order.total_amount,
+    'order_id',          v_order.id,
+    'order_number',      v_order.order_number,
+    'mode',              v_order.mode,
+    'subtotal',          v_order.subtotal,
+    'delivery_zone',     v_order.delivery_zone,
+    'delivery_fee',      v_order.delivery_fee,
+    'total_amount',      v_order.total_amount,
     'has_price_request', v_ask,
-    'items',            v_order.items_json);
+    'items',             v_order.items_json);
 end $$;
 
 -- الزبون غير المسجّل يستدعي هذه الدالة فقط — ولا وصول له لجدول الطلبات إطلاقاً
-revoke all on function public.create_order(text, text, jsonb, text) from public;
-grant execute on function public.create_order(text, text, jsonb, text) to anon, authenticated;
+revoke all on function public.create_order(text, text, jsonb, text, int, text) from public;
+grant execute on function public.create_order(text, text, jsonb, text, int, text) to anon, authenticated;
 
 
 -- إلغاء الطلب يعيد الكمية للمخزون، وإعادة تفعيله تخصمها من جديد.
@@ -400,6 +457,7 @@ create table if not exists public.telegram_agents (
 -- ---------------------------------------------------------------------
 alter table public.profiles        enable row level security;
 alter table public.categories      enable row level security;
+alter table public.delivery_zones  enable row level security;
 alter table public.products        enable row level security;
 alter table public.product_prices  enable row level security;
 alter table public.stock_movements enable row level security;
@@ -421,6 +479,14 @@ create policy "categories_read" on public.categories for select using (true);
 
 drop policy if exists "categories_admin" on public.categories;
 create policy "categories_admin" on public.categories
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- delivery_zones: المتجر يقرأ المناطق الفعّالة، والمدير يديرها
+drop policy if exists "zones_read" on public.delivery_zones;
+create policy "zones_read" on public.delivery_zones for select using (is_active or public.is_admin());
+
+drop policy if exists "zones_admin" on public.delivery_zones;
+create policy "zones_admin" on public.delivery_zones
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- products: الموظفون يقرؤون ويضيفون ويعدّلون، والحذف للمدير وحده

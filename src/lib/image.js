@@ -19,15 +19,29 @@ export async function resizeImage(file, maxWidth = 1024, quality = 0.8) {
   return blob
 }
 
-/** يرفع الصورة إلى bucket product-images ويعيد الرابط العام */
+export const imagePath = (productId) => `${productId}.jpg`
+
+/**
+ * يرفع الصورة إلى bucket product-images ويعيد الرابط العام.
+ * المسار ثابت لكل منتج (المعرّف نفسه) والرفع upsert — فتبديل الصورة يستبدل
+ * الملف بدل أن يترك نسخة يتيمة تأكل المساحة. ولاحقة ?v= تكسر ذاكرة المتصفح.
+ */
 export async function uploadProductImage(file, productId) {
   const blob = await resizeImage(file)
-  const path = `${productId}-${Date.now()}.jpg`
 
   const { error } = await supabase.storage
     .from('product-images')
-    .upload(path, blob, { contentType: 'image/jpeg', upsert: true })
+    .upload(imagePath(productId), blob, {
+      contentType: 'image/jpeg',
+      cacheControl: '31536000',
+      upsert: true,
+    })
   if (error) throw new Error('فشل رفع الصورة: ' + error.message)
 
-  return supabase.storage.from('product-images').getPublicUrl(path).data.publicUrl
+  const { publicUrl } = supabase.storage.from('product-images').getPublicUrl(imagePath(productId)).data
+  return `${publicUrl}?v=${Date.now()}`
 }
+
+/** يحذف صورة منتج — يُستدعى عند حذف المنتج حتى لا تبقى ملفات يتيمة */
+export const deleteProductImage = (productId) =>
+  supabase.storage.from('product-images').remove([imagePath(productId)])
