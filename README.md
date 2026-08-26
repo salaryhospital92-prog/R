@@ -8,11 +8,27 @@ React (Vite) · Tailwind CSS v4 · Lucide React · html5-qrcode · Supabase (Pos
 
 ## 🌐 المتجر على الإنترنت
 
-**https://salaryhospital92-prog.github.io/R/**
+**https://alrifai.shop**
 
-النشر تلقائي: كل `git push` إلى `main` يبني الموقع وينشره عبر GitHub Actions.
-`base` في vite هو `/R/`، و`404.html` نسخة من `index.html` ليعمل فتح الروابط
-الداخلية مباشرة.
+النشر تلقائي: كل `git push` إلى `main` يبني الموقع وينشره عبر GitHub Actions
+من المستودع `salaryhospital92-prog/R`.
+
+### سجلات DNS المطلوبة عند مسجّل النطاق
+| النوع | الاسم | القيمة |
+|---|---|---|
+| A | `@` | `185.199.108.153` |
+| A | `@` | `185.199.109.153` |
+| A | `@` | `185.199.110.153` |
+| A | `@` | `185.199.111.153` |
+| CNAME | `www` | `salaryhospital92-prog.github.io` |
+
+بعد انتشار السجلات (دقائق إلى ساعة) يُصدر GitHub شهادة HTTPS تلقائياً،
+ثم يُفعَّل «Enforce HTTPS» من إعدادات Pages.
+
+### صورة معاينة الرابط
+`public/og.jpg` (1200×630) مع وسوم Open Graph في `index.html` — تظهر بطاقة
+المتجر عند مشاركة الرابط في واتساب وتيليغرام وفيسبوك. لتغييرها: استبدل الصورة
+واحتفظ بالمقاس، ثم ادفع التغيير.
 
 ## الحالة الحالية
 
