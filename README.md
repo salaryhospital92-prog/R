@@ -12,12 +12,24 @@ React (Vite) · Tailwind CSS v4 · Lucide React · html5-qrcode · Supabase (Pos
 وملف `.env` معبّأ بمفاتيح المشروع. يبقى إجراء واحد يدوي: إنشاء حساب المدير (أدناه).
 
 ### الخطوة اليدوية الوحيدة — حساب المدير
-1. Supabase → **Authentication → Users → Add user** (فعّل «Auto Confirm User»).
-2. انسخ رقم المستخدم (UUID) ثم في **SQL Editor**:
+Supabase يسجّل الدخول بالبريد الإلكتروني لا باسم مستخدم، فاختر بريداً ولو داخلياً.
+
+1. Supabase → **Authentication → Users → Add user → Create new user**
+   - Email: `admin@alrifaie.com`
+   - Password: كلمة السر التي تريدها
+   - فعّل **Auto Confirm User** (وإلا لن يستطيع الدخول قبل تأكيد البريد)
+2. **SQL Editor** ونفّذ هذا السطر كما هو — لا تحتاج نسخ أي رقم:
    ```sql
-   update public.profiles set role = 'admin' where id = '<USER_UUID>';
+   update public.profiles p set role = 'admin'
+     from auth.users u
+    where u.id = p.id and u.email = 'admin@alrifaie.com';
    ```
-   أي حساب يُنشأ لاحقاً يبدأ تلقائياً بدور `data_entry`.
+3. للتأكد:
+   ```sql
+   select u.email, p.role from public.profiles p join auth.users u on u.id = p.id;
+   ```
+
+أي حساب يُنشأ لاحقاً يبدأ تلقائياً بدور `data_entry` — لا يحتاج منك شيئاً.
 
 ### التشغيل
 ```bash
