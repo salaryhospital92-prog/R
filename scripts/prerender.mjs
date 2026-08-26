@@ -62,7 +62,7 @@ for (const p of products ?? []) {
     p.in_stock ? 'متوفر الآن' : 'غير متوفر حالياً',
     'توصيل لكل المحافظات — اطلب عبر واتساب.',
   ].filter(Boolean).join(' · ')
-  const image = p.image_url || `${SITE}/og.jpg`
+  const image = p.image_url || `${SITE}/og.jpg?v=2`
   const pageUrl = `${SITE}/p/${p.code}`
 
   let html = template

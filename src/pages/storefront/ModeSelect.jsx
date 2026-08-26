@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { ShoppingBag, Boxes, ChevronLeft, Sparkles, LogIn } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
-import { STORE } from '../../lib/store'
+import { STORE, asset } from '../../lib/store'
 import ContactCard from '../../components/ContactCard'
 
 export default function ModeSelect() {
@@ -17,7 +17,7 @@ export default function ModeSelect() {
     <main className="mx-auto min-h-dvh max-w-md px-5 pb-10 pt-10">
       <header className="animate-fade-up text-center">
         <span className="mx-auto flex w-40 items-center justify-center rounded-3xl bg-white p-4 shadow-lg shadow-brand-600/15 ring-1 ring-slate-900/5">
-          <img src={`${import.meta.env.BASE_URL}logo.png`} alt="أسواق الرفاعي" className="w-full" />
+          <img src={asset('logo.png')} alt="أسواق الرفاعي" className="w-full" />
         </span>
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight">{STORE.name}</h1>
         <p className="mt-1.5 text-sm text-slate-500">{STORE.addressShort}</p>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatIQD } from '../lib/format'
+import { asset } from '../lib/store'
 
 /** نغمة تنبيه قصيرة بلا ملف صوتي */
 function beep() {
@@ -49,8 +50,8 @@ export function useOrderAlerts(enabled) {
         if (supported && Notification.permission === 'granted') {
           const n = new Notification(`طلب جديد #${o.order_number}`, {
             body: `${o.customer_name} — ${formatIQD(o.total_amount)}\n${o.delivery_zone ?? ''}`,
-            icon: `${import.meta.env.BASE_URL}icon-192.png`,
-            badge: `${import.meta.env.BASE_URL}icon-192.png`,
+            icon: asset('icon-192.png'),
+            badge: asset('icon-192.png'),
             tag: `order-${o.order_number}`,
             dir: 'rtl',
             lang: 'ar',

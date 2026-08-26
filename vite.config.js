@@ -5,6 +5,8 @@ import { defineConfig } from 'vite'
 
 // النطاق الخاص alrifai.shop يخدم من الجذر
 const BASE = '/'
+// ارفع الرقم كلما بدّلت الأيقونات ليتجاوز مخزون المتصفحات القديم
+const V = '?v=2'
 
 export default defineConfig({
   base: BASE,
@@ -33,9 +35,9 @@ export default defineConfig({
         background_color: '#f8fafc',
         theme_color: '#059669',
         icons: [
-          { src: BASE + 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: BASE + 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: BASE + 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: BASE + 'icon-192.png' + V, sizes: '192x192', type: 'image/png' },
+          { src: BASE + 'icon-512.png' + V, sizes: '512x512', type: 'image/png' },
+          { src: BASE + 'icon-maskable-512.png' + V, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
           { name: 'شراء مفرد', url: BASE + 'retail' },

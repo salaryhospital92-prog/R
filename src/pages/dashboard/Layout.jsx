@@ -6,6 +6,7 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { useOrderAlerts } from '../../hooks/useOrderAlerts'
 import { formatIQD } from '../../lib/format'
+import { asset } from '../../lib/store'
 
 const NAV = [
   { to: '/dashboard',         label: 'المنتجات', icon: Package,       end: true },
@@ -29,7 +30,7 @@ export default function Layout() {
     <div className="min-h-dvh">
       <header className="glass sticky top-0 z-30">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 pt-3">
-          <img src={`${import.meta.env.BASE_URL}logo-mark.png`} alt="" className="size-9" />
+          <img src={asset('logo-mark.png')} alt="" className="size-9" />
           <span className="font-extrabold">أسواق الرفاعي</span>
 
           <span className="ms-auto flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-[11px] font-bold ring-1 ring-slate-900/5">
