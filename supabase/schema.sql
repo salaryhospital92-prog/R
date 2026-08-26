@@ -132,8 +132,12 @@ create trigger trg_ensure_price_row
   after insert on public.products
   for each row execute function public.ensure_price_row();
 
--- واجهة المتجر العام: منتجات فعّالة + سعر المفرد فقط.
--- سعر الجملة لا يظهر هنا إطلاقاً، والمنتجات بسعر 0 (لم يسعّرها المدير بعد) مخفيّة.
+-- واجهة المتجر العام.
+-- قرار المالك: الزبون يختار «جملة» أو «مفرد» عند دخول المتجر، فالسعران معروضان.
+--   تنبيه معلوم ومقبول من المالك: أي زائر يستطيع اختيار وضع الجملة ورؤية أسعار
+--   الجملة. لإقفالها لاحقاً خلف رمز يُعطى لزبائن الجملة: احذف price_wholesale من
+--   هذا العرض وأنشئ دالة wholesale_catalog(p_code text) تتحقق من الرمز.
+-- والسعر 0 يعني «السعر عند الطلب» — المنتج يظهر ويُطلب ويُسعّره المدير عند التأكيد.
 drop view if exists public.storefront_products;
 create view public.storefront_products
 with (security_invoker = off) as
@@ -142,13 +146,14 @@ with (security_invoker = off) as
          p.category_id,
          c.name as category,
          p.image_url,
+         p.quantity_single,                       -- تحتاجه السلة لتحديد سقف الكمية
          (p.quantity_single > 0) as in_stock,
-         pr.price_retail
+         pr.price_retail,                          -- 0 = السعر عند الطلب
+         pr.price_wholesale                        -- 0 = السعر عند الطلب
     from public.products p
     join public.categories c      on c.id = p.category_id
     join public.product_prices pr on pr.product_id = p.id
-   where p.is_active = true
-     and pr.price_retail > 0;
+   where p.is_active = true;
 
 grant select on public.storefront_products to anon, authenticated;
 
@@ -166,11 +171,16 @@ create table if not exists public.stock_movements (
   total_change int generated always as (dozen_qty * 12 + singles_qty) stored,
   note         text,
   source       text not null default 'dashboard',   -- dashboard | telegram_bot | order
+  order_id     uuid,                                -- يُملأ لحركات البيع والإلغاء لربطها بالطلب
   created_by   uuid references public.profiles(id) default auth.uid(),
   created_at   timestamptz not null default now()
 );
 
+-- الجداول القديمة قد لا تحتوي العمود — أضفه عند إعادة التنفيذ
+alter table public.stock_movements add column if not exists order_id uuid;
+
 create index if not exists idx_movements_product on public.stock_movements (product_id, created_at desc);
+create index if not exists idx_movements_order   on public.stock_movements (order_id);
 
 -- تحديث كمية المنتج تلقائياً مع كل حركة؛ يمنع الرصيد السالب برسالة عربية واضحة
 create or replace function public.apply_stock_movement()
@@ -212,14 +222,28 @@ create table if not exists public.orders (
   order_number   bigint not null unique default nextval('public.order_number_seq'),
   customer_name  text   not null,
   customer_phone text   not null,
+  mode           text   not null default 'retail' check (mode in ('retail','wholesale')),
   total_amount   bigint not null check (total_amount >= 0),
   items_json     jsonb  not null,     -- لقطة مقفلة: الاسم والسعر والكمية وقت الطلب
   status         public.order_status not null default 'new',
   created_at     timestamptz not null default now()
 );
 
+alter table public.orders add column if not exists mode text not null default 'retail';
+do $$ begin
+  alter table public.orders add constraint orders_mode_check
+    check (mode in ('retail','wholesale'));
+exception when duplicate_object then null; end $$;
+
 create index if not exists idx_orders_created on public.orders (created_at desc);
 create index if not exists idx_orders_status  on public.orders (status);
+
+-- ربط حركات المخزون بالطلبات (يُضاف هنا لأن stock_movements أُنشئ قبل orders)
+do $$ begin
+  alter table public.stock_movements
+    add constraint stock_movements_order_fk
+    foreign key (order_id) references public.orders(id) on delete set null;
+exception when duplicate_object then null; end $$;
 
 
 -- ---------------------------------------------------------------------
@@ -227,23 +251,32 @@ create index if not exists idx_orders_status  on public.orders (status);
 --    المتصفح يرسل فقط (product_id, qty). الأسعار والمجموع تُقرأ وتُحسب هنا،
 --    ورابط واتساب يُبنى في الواجهة من ردّ هذه الدالة حصراً.
 -- ---------------------------------------------------------------------
+-- الوضع (mode): 'retail' مفرد أو 'wholesale' جملة — يحدد أي سعر يُقرأ.
+drop function if exists public.create_order(text, text, jsonb);
+
 create or replace function public.create_order(
   p_customer_name  text,
   p_customer_phone text,
-  p_items          jsonb   -- [{"product_id":"...","qty":2}, ...]
+  p_items          jsonb,           -- [{"product_id":"...","qty":2}, ...]
+  p_mode           text default 'retail'
 )
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_item  jsonb;
+  v_line  jsonb;
   v_id    uuid;
   v_qty   int;
   v_price bigint;
   v_name  text;
   v_stock int;
   v_total bigint := 0;
+  v_ask   boolean := false;   -- هل يحتوي الطلب بنداً «السعر عند الطلب»؟
   v_lines jsonb  := '[]'::jsonb;
   v_order public.orders;
 begin
+  if p_mode is null or p_mode not in ('retail', 'wholesale') then
+    raise exception 'نوع البيع غير صالح';
+  end if;
   if p_customer_name is null or length(trim(p_customer_name)) < 2 then
     raise exception 'الرجاء إدخال اسم الزبون';
   end if;
@@ -267,46 +300,87 @@ begin
       raise exception 'كمية غير صالحة';
     end if;
 
-    -- السعر يُقرأ من قاعدة البيانات، لا من السلة
-    select pr.price_retail, p.name, p.quantity_single
+    -- السعر يُقرأ من قاعدة البيانات حسب وضع البيع، لا من السلة
+    select case when p_mode = 'wholesale' then pr.price_wholesale else pr.price_retail end,
+           p.name, p.quantity_single
       into v_price, v_name, v_stock
       from public.products p
       join public.product_prices pr on pr.product_id = p.id
-     where p.id = v_id and p.is_active = true and pr.price_retail > 0;
+     where p.id = v_id and p.is_active = true;
 
     if v_price is null then
       raise exception 'أحد المنتجات لم يعد متوفراً في المتجر';
     end if;
     if v_stock < v_qty then
-      raise exception 'الكمية المطلوبة من «%» غير متوفرة حالياً', v_name;
+      raise exception 'الكمية المطلوبة من «%» غير متوفرة (المتوفر: % قطعة)', v_name, v_stock;
     end if;
+
+    -- سعر 0 = «السعر عند الطلب»: البند يُحفظ ويُحجز، ويسعّره المدير عند التأكيد
+    if v_price = 0 then v_ask := true; end if;
 
     v_total := v_total + v_price * v_qty;
     v_lines := v_lines || jsonb_build_object(
-      'product_id', v_id,
-      'name',       v_name,
-      'qty',        v_qty,
-      'unit_price', v_price,
-      'line_total', v_price * v_qty);
+      'product_id',       v_id,
+      'name',             v_name,
+      'qty',              v_qty,
+      'unit_price',       v_price,
+      'line_total',       v_price * v_qty,
+      'price_on_request', (v_price = 0));
   end loop;
 
-  insert into public.orders (customer_name, customer_phone, total_amount, items_json)
-  values (trim(p_customer_name), trim(p_customer_phone), v_total, v_lines)
+  insert into public.orders (customer_name, customer_phone, total_amount, items_json, mode)
+  values (trim(p_customer_name), trim(p_customer_phone), v_total, v_lines, p_mode)
   returning * into v_order;
 
+  -- قرار المالك: الخصم فور إرسال الطلب (يمنع بيع نفس القطعة مرتين).
+  -- إلغاء الطلب يعيد الكمية تلقائياً عبر trg_restore_stock_on_status.
+  for v_line in select * from jsonb_array_elements(v_lines) loop
+    insert into public.stock_movements
+      (product_id, type, singles_qty, source, order_id, note)
+    values ((v_line->>'product_id')::uuid, 'sale', -(v_line->>'qty')::int,
+            'order', v_order.id, 'طلب #' || v_order.order_number);
+  end loop;
+
   return jsonb_build_object(
-    'order_id',     v_order.id,
-    'order_number', v_order.order_number,
-    'total_amount', v_order.total_amount,
-    'items',        v_order.items_json);
+    'order_id',         v_order.id,
+    'order_number',     v_order.order_number,
+    'mode',             v_order.mode,
+    'total_amount',     v_order.total_amount,
+    'has_price_request', v_ask,
+    'items',            v_order.items_json);
 end $$;
 
 -- الزبون غير المسجّل يستدعي هذه الدالة فقط — ولا وصول له لجدول الطلبات إطلاقاً
-revoke all on function public.create_order(text, text, jsonb) from public;
-grant execute on function public.create_order(text, text, jsonb) to anon, authenticated;
+revoke all on function public.create_order(text, text, jsonb, text) from public;
+grant execute on function public.create_order(text, text, jsonb, text) to anon, authenticated;
 
--- ponytail: خصم المخزون لا يتم عند إنشاء الطلب (طلب واتساب غير مؤكد بعد)،
--- بل عند تحويل الحالة إلى delivered في المرحلة 5 عبر stock_movements type='sale'.
+
+-- إلغاء الطلب يعيد الكمية للمخزون، وإعادة تفعيله تخصمها من جديد.
+-- بدون هذا تتآكل أرصدة المخزون مع كل طلب ملغى.
+create or replace function public.restore_stock_on_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_line jsonb; v_sign int;
+begin
+  if (new.status = 'cancelled') = (old.status = 'cancelled') then
+    return new;                       -- لا تغيّر في حالة الإلغاء
+  end if;
+  v_sign := case when new.status = 'cancelled' then 1 else -1 end;
+
+  for v_line in select * from jsonb_array_elements(new.items_json) loop
+    insert into public.stock_movements
+      (product_id, type, singles_qty, source, order_id, note)
+    values ((v_line->>'product_id')::uuid, 'adjustment',
+            v_sign * (v_line->>'qty')::int, 'order', new.id,
+            case when v_sign = 1 then 'إلغاء الطلب #' else 'إعادة تفعيل الطلب #' end
+              || new.order_number);
+  end loop;
+  return new;
+end $$;
+
+drop trigger if exists trg_restore_stock_on_status on public.orders;
+create trigger trg_restore_stock_on_status
+  after update of status on public.orders
+  for each row execute function public.restore_stock_on_status();
 
 
 -- ---------------------------------------------------------------------

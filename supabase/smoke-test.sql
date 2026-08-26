@@ -9,8 +9,10 @@ do $$
 declare
   v_admin uuid := gen_random_uuid();
   v_entry uuid := gen_random_uuid();
-  v_prod  uuid;
+  v_prod  uuid;   -- منتج مسعّر
+  v_ask   uuid;   -- منتج «السعر عند الطلب»
   v_res   jsonb;
+  v_ord   uuid;
   v_qty   int;
   v_cnt   int;
 begin
@@ -32,22 +34,17 @@ begin
   assert (select count(*) from public.product_prices where product_id = v_prod) = 1,
     'فشل: لم يُنشأ صف الأسعار تلقائياً';
 
-  -- 2) منتج بلا سعر (0) يجب ألّا يظهر في المتجر
-  assert (select count(*) from public.storefront_products where id = v_prod) = 0,
-    'فشل: منتج غير مسعّر ظاهر في المتجر';
+  -- 2) منتج غير مسعّر يظهر في المتجر بسعر 0 = «السعر عند الطلب» (قرار المالك)
+  assert (select price_retail from public.storefront_products where id = v_prod) = 0,
+    'فشل: المنتج غير المسعّر لا يظهر في المتجر بسعر 0';
 
   update public.product_prices
      set price_wholesale = 6000, price_retail = 10000 where product_id = v_prod;
 
-  assert (select count(*) from public.storefront_products where id = v_prod) = 1,
-    'فشل: منتج مسعّر لا يظهر في المتجر';
-
-  -- 3) عرض المتجر لا يكشف سعر الجملة إطلاقاً
-  assert not exists (
-    select 1 from information_schema.columns
-     where table_schema = 'public' and table_name = 'storefront_products'
-       and column_name = 'price_wholesale'),
-    'فشل خطير: سعر الجملة مكشوف في عرض المتجر';
+  -- 3) العرض يقدّم السعرين (وضعا الجملة والمفرد)
+  assert (select price_retail    from public.storefront_products where id = v_prod) = 10000
+     and (select price_wholesale from public.storefront_products where id = v_prod) =  6000,
+    'فشل: العرض لا يقدّم سعرَي المفرد والجملة';
 
   -- 4) منطق الدزينة: 2 دزينة + 3 مفرد = 27 قطعة
   insert into public.stock_movements (product_id, type, dozen_qty, singles_qty, created_by)
@@ -56,7 +53,7 @@ begin
   select quantity_single into v_qty from public.products where id = v_prod;
   assert v_qty = 27, format('فشل: حساب الدزينة أعطى %s بدل 27', v_qty);
 
-  -- 5) منع الرصيد السالب
+  -- 5) منع الرصيد السالب برسالة عربية
   begin
     insert into public.stock_movements (product_id, type, dozen_qty, singles_qty)
     values (v_prod, 'sale', 0, -100);
@@ -65,35 +62,78 @@ begin
     if position('الرصيد المتوفر' in sqlerrm) = 0 then raise; end if;
   end;
 
-  -- 6) create_order يحسب المجموع من قاعدة البيانات لا من الواجهة
+  -- 6) طلب مفرد: المجموع يُحسب من القاعدة (3 × 10٬000 = 30٬000)
   v_res := public.create_order('زبون تجريبي', '07701234567',
-             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 3)));
+             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 3)), 'retail');
+  v_ord := (v_res->>'order_id')::uuid;
 
   assert (v_res->>'total_amount')::bigint = 30000,
-    format('فشل: المجموع %s بدل 30000', v_res->>'total_amount');
-  assert (v_res->>'order_number') is not null, 'فشل: لا يوجد رقم طلب';
+    format('فشل: مجموع المفرد %s بدل 30000', v_res->>'total_amount');
   assert (v_res->'items'->0->>'unit_price')::bigint = 10000,
-    'فشل: السعر المحفوظ لا يطابق سعر قاعدة البيانات';
+    'فشل: السعر المحفوظ لا يطابق سعر القاعدة';
 
-  -- 7) رفض كمية أكبر من المخزون
+  -- 7) الخصم فور الطلب (قرار المالك): 27 − 3 = 24
+  select quantity_single into v_qty from public.products where id = v_prod;
+  assert v_qty = 24, format('فشل: المخزون بعد الطلب %s بدل 24', v_qty);
+
+  -- 8) طلب جملة يقرأ سعر الجملة (2 × 6٬000 = 12٬000) والمخزون 24 − 2 = 22
+  v_res := public.create_order('زبون جملة', '07701234567',
+             jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 2)), 'wholesale');
+  assert (v_res->>'total_amount')::bigint = 12000,
+    format('فشل: مجموع الجملة %s بدل 12000', v_res->>'total_amount');
+  assert (v_res->>'mode') = 'wholesale', 'فشل: وضع البيع لم يُحفظ';
+
+  select quantity_single into v_qty from public.products where id = v_prod;
+  assert v_qty = 22, format('فشل: المخزون بعد طلب الجملة %s بدل 22', v_qty);
+
+  -- 9) إلغاء الطلب يعيد الكمية: 22 + 3 = 25
+  update public.orders set status = 'cancelled' where id = v_ord;
+  select quantity_single into v_qty from public.products where id = v_prod;
+  assert v_qty = 25, format('فشل: الإلغاء لم يُعِد الكمية (%s بدل 25)', v_qty);
+
+  -- 10) إعادة تفعيل الطلب الملغى تخصم الكمية من جديد: 25 − 3 = 22
+  update public.orders set status = 'confirmed' where id = v_ord;
+  select quantity_single into v_qty from public.products where id = v_prod;
+  assert v_qty = 22, format('فشل: إعادة التفعيل لم تخصم الكمية (%s بدل 22)', v_qty);
+
+  -- 11) «السعر عند الطلب»: منتج بسعر 0 يُطلب بمجموع 0 مع علامة تنبّه المدير
+  insert into public.products (barcode, name, category_id)
+  values ('TEST-0002', 'شامبو بلا سعر', 7) returning id into v_ask;
+  insert into public.stock_movements (product_id, type, singles_qty) values (v_ask, 'stock_in', 5);
+
+  v_res := public.create_order('زبون', '07701234567',
+             jsonb_build_array(jsonb_build_object('product_id', v_ask, 'qty', 2)), 'retail');
+  assert (v_res->>'total_amount')::bigint = 0, 'فشل: مجموع بند بلا سعر ليس 0';
+  assert (v_res->>'has_price_request')::boolean, 'فشل: لم تُرفع علامة «السعر عند الطلب»';
+  assert (v_res->'items'->0->>'price_on_request')::boolean, 'فشل: البند غير معلّم';
+
+  -- 12) رفض كمية أكبر من المخزون
   begin
     perform public.create_order('زبون', '07701234567',
-              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 999)));
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 999)), 'retail');
     raise exception 'فشل: قُبل طلب يتجاوز المخزون';
   exception when others then
     if position('غير متوفرة' in sqlerrm) = 0 then raise; end if;
   end;
 
-  -- 8) رفض هاتف غير صالح
+  -- 13) رفض هاتف غير صالح ووضع بيع غير معروف
   begin
     perform public.create_order('زبون', '123',
-              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)));
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'retail');
     raise exception 'فشل: قُبل رقم هاتف غير صالح';
   exception when others then
     if position('هاتف صحيح' in sqlerrm) = 0 then raise; end if;
   end;
 
-  -- 9) RLS: موظف الإدخال لا يرى أي صف أسعار
+  begin
+    perform public.create_order('زبون', '07701234567',
+              jsonb_build_array(jsonb_build_object('product_id', v_prod, 'qty', 1)), 'hack');
+    raise exception 'فشل: قُبل وضع بيع غير معروف';
+  exception when others then
+    if position('نوع البيع' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  -- 14) RLS: موظف الإدخال لا يرى أي سعر ولا أي طلب
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_entry, 'role', 'authenticated')::text, true);
@@ -101,14 +141,12 @@ begin
   assert not public.is_admin(), 'فشل: موظف الإدخال يُعتبر مديراً';
   select count(*) into v_cnt from public.product_prices;
   assert v_cnt = 0, format('فشل خطير: موظف الإدخال يرى %s صف أسعار', v_cnt);
-
   select count(*) into v_cnt from public.orders;
   assert v_cnt = 0, 'فشل: موظف الإدخال يرى الطلبات';
-
   select count(*) into v_cnt from public.products;
   assert v_cnt >= 1, 'فشل: موظف الإدخال لا يرى المنتجات';
 
-  -- 10) RLS: المدير يرى الأسعار والطلبات
+  -- 15) RLS: المدير يرى الأسعار والطلبات
   perform set_config('request.jwt.claims',
     json_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
   assert public.is_admin(), 'فشل: المدير لا يُعتبر مديراً';
@@ -118,7 +156,7 @@ begin
   assert v_cnt >= 1, 'فشل: المدير لا يرى الطلبات';
 
   reset role;
-  raise notice '✅ كل الفحوصات نجحت — المخطط سليم.';
+  raise notice '✅ كل الفحوصات نجحت (15 فحصاً) — المخطط سليم.';
 end $$;
 
 rollback;
