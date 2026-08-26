@@ -26,3 +26,6 @@ dist-ssr
 # البيئة — لا تُرفع إلى Git
 .env
 .env.local
+
+# أسرار محلية
+.telegram-secret.txt

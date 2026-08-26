@@ -1,0 +1,5 @@
+project_id = "slrhxeozdadonarkclba"
+
+[functions.telegram]
+enabled = true
+verify_jwt = false
