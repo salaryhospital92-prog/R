@@ -49,13 +49,13 @@ export function useOrderAlerts(enabled) {
         if (supported && Notification.permission === 'granted') {
           const n = new Notification(`طلب جديد #${o.order_number}`, {
             body: `${o.customer_name} — ${formatIQD(o.total_amount)}\n${o.delivery_zone ?? ''}`,
-            icon: '/icon-192.png',
-            badge: '/icon-192.png',
+            icon: `${import.meta.env.BASE_URL}icon-192.png`,
+            badge: `${import.meta.env.BASE_URL}icon-192.png`,
             tag: `order-${o.order_number}`,
             dir: 'rtl',
             lang: 'ar',
           })
-          n.onclick = () => { window.focus(); window.location.href = '/dashboard/orders' }
+          n.onclick = () => { window.focus(); window.location.href = `${import.meta.env.BASE_URL}dashboard/orders` }
         }
       })
       .subscribe()

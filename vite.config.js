@@ -3,7 +3,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
+// المستودع يُنشر على https://<user>.github.io/R/ فالمسارات كلها تحت /R/
+const BASE = '/R/'
+
 export default defineConfig({
+  base: BASE,
   plugins: [
     react(),
     tailwindcss(),
@@ -22,20 +26,20 @@ export default defineConfig({
         description: 'متجر أسواق الرفاعي — الرمادي، شارع السينما. عطور، بشرة، كوزمتك، ومواد منزلية جملة ومفرد.',
         lang: 'ar',
         dir: 'rtl',
-        start_url: '/',
-        scope: '/',
+        start_url: BASE,
+        scope: BASE,
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#f8fafc',
         theme_color: '#059669',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: BASE + 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: BASE + 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: BASE + 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
-          { name: 'شراء مفرد', url: '/retail' },
-          { name: 'شراء جملة', url: '/wholesale' },
+          { name: 'شراء مفرد', url: BASE + 'retail' },
+          { name: 'شراء جملة', url: BASE + 'wholesale' },
         ],
       },
     }),

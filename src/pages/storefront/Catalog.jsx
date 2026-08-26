@@ -65,7 +65,7 @@ export default function Catalog({ mode }) {
             <Link to="/" className="rounded-xl p-1.5 transition hover:bg-white/15" aria-label="رجوع">
               <ChevronRight className="size-5" />
             </Link>
-            <img src="/icon-192.png" alt="" className="size-9 rounded-xl ring-2 ring-white/25" />
+            <img src={`${import.meta.env.BASE_URL}icon-192.png`} alt="" className="size-9 rounded-xl ring-2 ring-white/25" />
             <div className="min-w-0">
               <p className="font-extrabold leading-tight">{STORE.name}</p>
               <p className="text-[11px] text-white/85">
