@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Cairo", system-ui, sans-serif;
+  --font-sans: "Tajawal", system-ui, sans-serif;
 
   --color-brand-50:  #ecfdf5;
   --color-brand-100: #d1fae5;

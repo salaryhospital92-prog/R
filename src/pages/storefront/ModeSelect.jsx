@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom'
-import { ShoppingBag, Boxes, ChevronLeft, Sparkles } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ShoppingBag, Boxes, ChevronLeft, Sparkles, LogIn } from 'lucide-react'
 import { useCart } from '../../context/CartContext'
 import { STORE } from '../../lib/store'
 import ContactCard from '../../components/ContactCard'
@@ -56,6 +56,14 @@ export default function ModeSelect() {
       )}
 
       <ContactCard className="animate-fade-up mt-8" style={{ animationDelay: '320ms' }} />
+
+      <Link
+        to="/dashboard"
+        className="animate-fade-up mt-4 flex items-center justify-center gap-2 rounded-2xl bg-white/70 py-3 text-sm font-bold text-slate-600 ring-1 ring-slate-900/5 transition hover:bg-white hover:text-slate-900"
+        style={{ animationDelay: '380ms' }}
+      >
+        <LogIn className="size-4" /> دخول الإدارة
+      </Link>
 
       <p className="mt-6 text-center text-xs text-slate-400">
         © {new Date().getFullYear()} {STORE.name}

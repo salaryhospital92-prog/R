@@ -337,3 +337,25 @@ grant execute on function public.low_stock(int)                 to authenticated
 -- تم. الفاتورة = الطلب (order_number هو رقم الفاتورة)، والمخزون لا يتغيّر
 -- إلا عبر stock_movements — بيعاً كان أو شراءً أو تصحيحاً.
 -- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+-- 8) دعوات البوت — إضافة مدير/مشرف برمز لمرة واحدة
+--    أفضل من مطاردة معرّف تيليغرام: المدير يولّد رمزاً ويرسله للشخص،
+--    والشخص يرسل الرمز للبوت فيُسجَّل بالدور المحدد. الرمز يُستهلك مرة واحدة.
+-- ---------------------------------------------------------------------
+create table if not exists public.telegram_invites (
+  code       text primary key,
+  role       public.user_role not null default 'data_entry',
+  label      text,
+  created_by bigint,                         -- telegram_id للمدير المُصدِر
+  expires_at timestamptz not null default now() + interval '24 hours',
+  used_by    bigint,
+  used_at    timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.telegram_invites enable row level security;
+drop policy if exists "tg_invites_admin" on public.telegram_invites;
+create policy "tg_invites_admin" on public.telegram_invites
+  for all using (public.is_admin()) with check (public.is_admin());
