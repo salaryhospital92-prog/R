@@ -6,6 +6,7 @@ import { CartProvider } from './context/CartContext'
 import ModeSelect from './pages/storefront/ModeSelect'
 import Catalog from './pages/storefront/Catalog'
 import Checkout from './pages/storefront/Checkout'
+import ProductPage from './pages/storefront/ProductPage'
 import Login from './pages/dashboard/Login'
 import Layout from './pages/dashboard/Layout'
 import Products from './pages/dashboard/Products'
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/retail" element={<Catalog mode="retail" />} />
             <Route path="/wholesale" element={<Catalog mode="wholesale" />} />
             <Route path="/checkout" element={<Checkout />} />
+            <Route path="/p/:code" element={<ProductPage />} />
 
             {/* اللوحة */}
             <Route path="/dashboard/login" element={<Login />} />

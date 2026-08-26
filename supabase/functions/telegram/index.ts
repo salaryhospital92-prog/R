@@ -828,7 +828,7 @@ async function finishProduct(chat: number, d: any, agent: Agent, photoId: string
       barcode: d.barcode, name: d.name, category_id: d.categoryId,
       sold_by: piece ? 'piece' : 'dozen',
     })
-    .select('id').single()
+    .select('id, code').single()
 
   if (error || !product) {
     return screen(chat, '⚠️ تعذّرت الإضافة: ' + (error?.message ?? ''), [backRow()])
@@ -875,9 +875,14 @@ async function finishProduct(chat: number, d: any, agent: Agent, photoId: string
     `🖼 الصورة: ${imageUrl ? '✅ مرفوعة' : '—'}\n\n` +
     (visible
       ? `🟢 <b>ظاهر الآن في المتجر</b>`
-      : `🟡 <b>غير ظاهر في المتجر</b> — السعر 0 يعني «السعر عند الطلب».`)
+      : `🟡 <b>غير ظاهر في المتجر</b> — السعر 0 يعني «السعر عند الطلب».`) +
+    (STORE_URL ? `\n\n🔗 صفحة المنتج — أرسلها للزبون:\n${STORE_URL}/p/${product.code}` : '')
 
-  const buttons: Row[] = [[['➕ منتج آخر', 'f:addProduct'], ['💵 تعديل السعر', 'f:setPrice']], backRow()]
+  const buttons: Row[] = [
+    STORE_URL ? [['🔗 فتح صفحة المنتج', `${STORE_URL}/p/${product.code}`]] : [],
+    [['➕ منتج آخر', 'f:addProduct'], ['💵 تعديل السعر', 'f:setPrice']],
+    backRow(),
+  ]
 
   return imageUrl
     ? screenPhoto(chat, imageUrl, caption, buttons)
@@ -1183,11 +1188,13 @@ function parseQty(text: string): { dozen: number; singles: number } | null {
 async function findProduct(term: string) {
   const q = term.trim()
   if (!q) return null
-  const { data: byCode } = await db.from('products')
-    .select('id, name, quantity_single').eq('barcode', q).maybeSingle()
+  const cols = 'id, code, name, quantity_single'
+  const { data: byCode } = await db.from('products').select(cols).eq('barcode', q).maybeSingle()
   if (byCode) return byCode
-  const { data } = await db.from('products')
-    .select('id, name, quantity_single').ilike('name', `%${q}%`).limit(1)
+  // رمز صفحة المنتج القصير يصلح للبحث أيضاً
+  const { data: byShort } = await db.from('products').select(cols).eq('code', q.toUpperCase()).maybeSingle()
+  if (byShort) return byShort
+  const { data } = await db.from('products').select(cols).ilike('name', `%${q}%`).limit(1)
   return data?.[0] ?? null
 }
 
@@ -1228,6 +1235,13 @@ async function quickSearch(chat: number, term: string, admin: boolean) {
     const { data: pr } = await db.from('product_prices').select('*').eq('product_id', p.id).maybeSingle()
     extra = `\n🏷 المفرد: ${iqd(pr?.price_retail ?? 0)}\n📦 الجملة: ${iqd(pr?.price_wholesale ?? 0)} للقطعة`
   }
-  return screen(chat, `📦 <b>${p.name}</b>\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}`,
-    [[['📥 إضافة كمية', 'f:addStock']], admin ? [['💵 تسعير', 'f:setPrice']] : [], backRow()])
+  return screen(chat,
+    `📦 <b>${p.name}</b>\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}` +
+    (STORE_URL ? `\n\n🔗 ${STORE_URL}/p/${p.code}` : ''),
+    [
+      STORE_URL ? [['🔗 صفحة المنتج', `${STORE_URL}/p/${p.code}`]] : [],
+      [['📥 إضافة كمية', 'f:addStock']],
+      admin ? [['💵 تسعير', 'f:setPrice']] : [],
+      backRow(),
+    ])
 }

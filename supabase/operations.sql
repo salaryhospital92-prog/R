@@ -467,3 +467,48 @@ begin
 end $$;
 
 grant execute on function public.price_order_item(uuid, uuid, bigint, boolean) to authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- 11) رمز قصير لكل منتج — لصفحته المستقلة alrifai.shop/p/K7M2QX
+--     أبجدية بلا حروف ملتبسة (O/0 و I/1) ليسهل قراءتها هاتفياً.
+-- ---------------------------------------------------------------------
+create or replace function public.gen_product_code()
+returns text language sql volatile as $$
+  select string_agg(
+    substr('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', (floor(random() * 32) + 1)::int, 1), '')
+  from generate_series(1, 6);
+$$;
+
+alter table public.products
+  add column if not exists code text default public.gen_product_code();
+
+-- تعبئة المنتجات القديمة، وضمان عدم التكرار
+update public.products set code = public.gen_product_code() where code is null;
+
+do $$ begin
+  alter table public.products add constraint products_code_key unique (code);
+exception when duplicate_table or duplicate_object then null; end $$;
+
+alter table public.products alter column code set not null;
+
+drop view if exists public.storefront_products;
+create view public.storefront_products
+with (security_invoker = off) as
+  select p.id,
+         p.code,
+         p.name,
+         p.category_id,
+         c.name as category,
+         p.image_url,
+         p.quantity_single,
+         p.sold_by,
+         (p.quantity_single > 0) as in_stock,
+         pr.price_retail,
+         pr.price_wholesale
+    from public.products p
+    join public.categories c      on c.id = p.category_id
+    join public.product_prices pr on pr.product_id = p.id
+   where p.is_active = true;
+
+grant select on public.storefront_products to anon, authenticated;

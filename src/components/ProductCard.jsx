@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Plus, Minus, ImageOff } from 'lucide-react'
 import { formatIQD, formatNumber } from '../lib/format'
 import { stepFor } from '../context/CartContext'
@@ -16,7 +17,7 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
       className="animate-fade-up card group flex flex-col overflow-hidden shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-xl"
       style={{ animationDelay: `${Math.min(index, 12) * 45}ms` }}
     >
-      <div className="relative aspect-square overflow-hidden bg-slate-100">
+      <Link to={`/p/${product.code}`} className="relative block aspect-square overflow-hidden bg-slate-100">
         {product.image_url ? (
           <img
             src={product.image_url} alt={product.name} loading="lazy"
@@ -43,10 +44,12 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
             كمية محدودة
           </span>
         )}
-      </div>
+      </Link>
 
       <div className="flex flex-1 flex-col p-3.5">
-        <h3 className="line-clamp-2 text-[13px] font-bold leading-snug">{product.name}</h3>
+        <Link to={`/p/${product.code}`} className="line-clamp-2 text-[13px] font-bold leading-snug hover:text-brand-700">
+          {product.name}
+        </Link>
 
         <div className="mt-1.5">
           {onRequest ? (
