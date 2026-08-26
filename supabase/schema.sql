@@ -565,3 +565,89 @@ create policy "images_admin_delete" on storage.objects
 --      update public.profiles set role = 'admin' where id = '<USER_UUID>';
 -- 3) للتحقق السريع من عمل المخطط، نفّذ ملف supabase/smoke-test.sql.
 -- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+-- 11) إشعار التيليغرام عند وصول طلب جديد
+--     pg_net يرسل الطلب لاحقاً بشكل غير متزامن، فلا يبطّئ حفظ الطلب،
+--     وفشل الإرسال لا يُفشل الطلب نفسه.
+-- ---------------------------------------------------------------------
+create extension if not exists pg_net with schema extensions;
+
+create table if not exists public.app_settings (
+  key        text primary key,
+  value      text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+insert into public.app_settings (key, value) values
+  ('telegram_bot_token', ''),   -- من @BotFather
+  ('telegram_chat_id',   '')    -- معرّف المحادثة التي تصلها الإشعارات
+on conflict (key) do nothing;
+
+alter table public.app_settings enable row level security;
+
+drop policy if exists "settings_admin" on public.app_settings;
+create policy "settings_admin" on public.app_settings
+  for all using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.notify_new_order()
+returns trigger language plpgsql security definer
+set search_path = public, extensions as $$
+declare
+  v_token text;
+  v_chat  text;
+  v_line  jsonb;
+  v_items text := '';
+  v_qty   text;
+  v_i     int  := 0;
+begin
+  select value into v_token from public.app_settings where key = 'telegram_bot_token';
+  select value into v_chat  from public.app_settings where key = 'telegram_chat_id';
+  if coalesce(v_token, '') = '' or coalesce(v_chat, '') = '' then
+    return new;                       -- الإشعارات غير مضبوطة بعد — تجاهل بصمت
+  end if;
+
+  for v_line in select * from jsonb_array_elements(new.items_json) loop
+    v_i := v_i + 1;
+    v_qty := case when new.mode = 'wholesale'
+                  then to_char((v_line->>'qty')::int / 12, 'FM999,999') || ' درزن'
+                  else to_char((v_line->>'qty')::int, 'FM999,999') || ' قطعة' end;
+    v_items := v_items || v_i || '. ' || (v_line->>'name') || ' — ' || v_qty ||
+      case when (v_line->>'price_on_request')::boolean then ' — السعر عند الطلب'
+           else ' = ' || to_char((v_line->>'line_total')::bigint, 'FM999,999,999') || ' د.ع' end
+      || E'\n';
+  end loop;
+
+  perform net.http_post(
+    url     := 'https://api.telegram.org/bot' || v_token || '/sendMessage',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body    := jsonb_build_object(
+      'chat_id', v_chat,
+      'text',
+        '🛒 طلب جديد #' || new.order_number || E'\n' ||
+        'النوع: ' || case when new.mode = 'wholesale' then 'جملة' else 'مفرد' end || E'\n' ||
+        'الزبون: ' || new.customer_name || E'\n' ||
+        'الهاتف: ' || new.customer_phone || E'\n' ||
+        'المنطقة: ' || coalesce(new.delivery_zone, '—') || E'\n' ||
+        coalesce('ملاحظة: ' || new.customer_note || E'\n', '') || E'\n' ||
+        v_items || E'\n' ||
+        'البضاعة: ' || to_char(new.subtotal, 'FM999,999,999') || ' د.ع' || E'\n' ||
+        'التوصيل: ' || to_char(new.delivery_fee, 'FM999,999,999') || ' د.ع' || E'\n' ||
+        '💰 المجموع: ' || to_char(new.total_amount, 'FM999,999,999') || ' د.ع'
+    )
+  );
+  return new;
+exception when others then
+  return new;                          -- فشل الإشعار لا يُفشل الطلب أبداً
+end $$;
+
+drop trigger if exists trg_notify_new_order on public.orders;
+create trigger trg_notify_new_order
+  after insert on public.orders
+  for each row execute function public.notify_new_order();
+
+-- المتجر يحتاج قراءة الطلبات لحظياً في لوحة المدير (Realtime)
+do $$ begin
+  alter publication supabase_realtime add table public.orders;
+exception when duplicate_object then null; end $$;

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, Trash2, Loader2, CheckCircle2, MessageCircle, Truck, ImageOff,
+  ArrowRight, Trash2, Loader2, CheckCircle2, MessageCircle, Truck, ImageOff, Plus, Minus,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
-import { useCart } from '../../context/CartContext'
+import { useCart, stepFor } from '../../context/CartContext'
 import { buildOrderMessage, whatsappUrl, storePhoneConfigured } from '../../lib/whatsapp'
 import ContactCard from '../../components/ContactCard'
 
@@ -148,25 +148,66 @@ export default function Checkout() {
         {products.map((p) => {
           const qty = cart.items[p.id] ?? 0
           const price = priceOf(p)
+          const step = stepFor(cart.mode)
+          const maxQty = Math.floor(p.quantity_single / step) * step
           return (
-            <div key={p.id} className="animate-fade-up card flex items-center gap-3 p-3">
-              {p.image_url ? (
-                <img src={p.image_url} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
-              ) : (
-                <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-slate-100"><ImageOff className="size-5 text-slate-400" /></span>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{p.name}</p>
-                <p className="text-xs text-slate-500">
-                  {isWholesale ? `${formatNumber(qty / 12)} درزن (${formatNumber(qty)} قطعة)` : `${formatNumber(qty)} قطعة`}
-                </p>
-                <p className="text-sm font-bold text-brand-700">
-                  {price === 0 ? 'السعر عند الطلب' : formatIQD(price * qty)}
-                </p>
+            <div key={p.id} className="animate-fade-up card p-3">
+              <div className="flex items-center gap-3">
+                {p.image_url ? (
+                  <img src={p.image_url} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
+                ) : (
+                  <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-slate-100"><ImageOff className="size-5 text-slate-400" /></span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{p.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} للقطعة`}
+                  </p>
+                  <p className="text-sm font-extrabold text-brand-700">
+                    {price === 0 ? '—' : formatIQD(price * qty)}
+                  </p>
+                </div>
+                <button type="button" onClick={() => cart.setQty(p.id, 0)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="حذف">
+                  <Trash2 className="size-4" />
+                </button>
               </div>
-              <button type="button" onClick={() => cart.setQty(p.id, 0)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="حذف">
-                <Trash2 className="size-4" />
-              </button>
+
+              {/* تعديل الكمية من داخل السلة مباشرة */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <div className="flex flex-1 items-center justify-between rounded-2xl bg-brand-50 p-1 ring-1 ring-brand-600/15">
+                  <button type="button" onClick={() => cart.setQty(p.id, Math.max(qty - step, 0))}
+                          className="flex size-9 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm transition active:scale-90"
+                          aria-label="إنقاص">
+                    <Minus className="size-4" />
+                  </button>
+                  <span className="text-[13px] font-extrabold text-brand-900">
+                    {isWholesale
+                      ? `${formatNumber(qty / 12)} درزن — ${formatNumber(qty)} قطعة`
+                      : `${formatNumber(qty)} قطعة`}
+                  </span>
+                  <button type="button" onClick={() => cart.setQty(p.id, Math.min(qty + step, maxQty))}
+                          disabled={qty >= maxQty}
+                          className="flex size-9 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm transition active:scale-90 disabled:opacity-40"
+                          aria-label="زيادة">
+                    <Plus className="size-4" />
+                  </button>
+                </div>
+                <input
+                  type="number" min={step} step={step} max={maxQty} inputMode="numeric"
+                  value={isWholesale ? qty / 12 : qty}
+                  onChange={(e) => {
+                    const n = Math.max(0, Math.min(Number(e.target.value) || 0, maxQty / step))
+                    cart.setQty(p.id, n * step)
+                  }}
+                  className="w-20 rounded-2xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm font-bold focus:border-brand-500 focus:outline-none"
+                  aria-label={isWholesale ? 'عدد الدرزن' : 'عدد القطع'}
+                />
+              </div>
+              {qty >= maxQty && (
+                <p className="mt-1.5 text-[11px] text-amber-600">
+                  هذه أقصى كمية متوفرة حالياً ({formatNumber(p.quantity_single)} قطعة).
+                </p>
+              )}
             </div>
           )
         })}
