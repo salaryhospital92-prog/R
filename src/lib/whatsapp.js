@@ -19,7 +19,7 @@ export function buildOrderMessage(order) {
   ]
 
   order.items.forEach((it, i) => {
-    const qty = order.mode === 'wholesale'
+    const qty = order.mode === 'wholesale' && it.qty % 12 === 0
       ? `${formatNumber(it.qty / 12)} درزن (${formatNumber(it.qty)} قطعة)`
       : `${formatNumber(it.qty)} قطعة`
     lines.push(

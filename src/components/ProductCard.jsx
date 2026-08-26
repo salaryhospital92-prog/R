@@ -3,7 +3,8 @@ import { formatIQD, formatNumber } from '../lib/format'
 import { stepFor } from '../context/CartContext'
 
 export default function ProductCard({ product, mode, qty, onChange, index = 0 }) {
-  const step = stepFor(mode)
+  const step = stepFor(mode, product.sold_by)
+  const byDozen = step === 12
   const price = mode === 'wholesale' ? product.price_wholesale : product.price_retail
   const onRequest = price === 0
   const soldOut = product.quantity_single <= 0
@@ -54,7 +55,9 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
             <>
               <p className="text-base font-extrabold tracking-tight text-brand-700">{formatIQD(price)}</p>
               {mode === 'wholesale' && (
-                <p className="text-[11px] text-slate-500">للقطعة · الدرزن {formatIQD(price * 12)}</p>
+                <p className="text-[11px] text-slate-500">
+                  {byDozen ? `للقطعة · الدرزن ${formatIQD(price * 12)}` : 'للقطعة · يُباع بالقطعة'}
+                </p>
               )}
             </>
           )}
@@ -82,7 +85,7 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
                 <Minus className="size-4" />
               </button>
               <span className="text-[13px] font-extrabold text-brand-900">
-                {mode === 'wholesale' ? `${formatNumber(qty / 12)} درزن` : `${formatNumber(qty)} قطعة`}
+                {byDozen ? `${formatNumber(qty / 12)} درزن` : `${formatNumber(qty)} قطعة`}
               </span>
               <button
                 onClick={() => onChange(Math.min(qty + step, maxQty))} disabled={qty >= maxQty}

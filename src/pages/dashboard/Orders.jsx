@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Loader2, Phone, MapPin, ChevronDown, Package, MessageCircle, AlertTriangle,
+  Loader2, Phone, MapPin, ChevronDown, Package, MessageCircle, AlertTriangle, Tag,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
@@ -16,6 +16,8 @@ export default function Orders() {
   const [orders, setOrders] = useState([])
   const [filter, setFilter] = useState('')
   const [openId, setOpenId] = useState(null)
+  const [priceDraft, setPriceDraft] = useState({})   // { `${orderId}:${productId}`: value }
+  const [pricing, setPricing] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -35,6 +37,29 @@ export default function Orders() {
     if (error) return setError('تعذّر تغيير الحالة: ' + error.message)
     // الإلغاء يعيد الكمية للمخزون وإعادة التفعيل تخصمها — يتم في قاعدة البيانات
     setOrders((list) => list.map((o) => (o.id === order.id ? { ...o, status } : o)))
+  }
+
+  // تسعير بند بلا سعر: القاعدة تعيد حساب المجاميع، لا المتصفح
+  const priceItem = async (order, item, saveToProduct) => {
+    const key = `${order.id}:${item.product_id}`
+    const value = Math.max(0, Number(priceDraft[key]) || 0)
+    if (value <= 0) return setError('أدخل سعراً أكبر من صفر')
+    setPricing(key)
+    setError('')
+    const { data, error } = await supabase.rpc('price_order_item', {
+      p_order_id: order.id,
+      p_product_id: item.product_id,
+      p_unit_price: value,
+      p_save_to_product: saveToProduct,
+    })
+    if (error) setError('تعذّر التسعير: ' + error.message)
+    else {
+      setOrders((list) => list.map((o) => o.id === order.id
+        ? { ...o, items_json: data.items, subtotal: data.subtotal, total_amount: data.total_amount }
+        : o))
+      setPriceDraft((d) => ({ ...d, [key]: '' }))
+    }
+    setPricing(null)
   }
 
   const shown = filter ? orders.filter((o) => o.status === filter) : orders
@@ -124,22 +149,55 @@ export default function Orders() {
                       )}
                     </div>
 
-                    <ul className="mb-3 grid gap-1.5">
-                      {(o.items_json ?? []).map((it, i) => (
-                        <li key={i} className="flex items-center justify-between gap-2">
-                          <span className="min-w-0 flex-1 truncate">
-                            {it.name}
-                            <span className="text-slate-400">
-                              {' '}× {o.mode === 'wholesale'
-                                ? `${formatNumber(it.qty / 12)} درزن`
-                                : `${formatNumber(it.qty)} قطعة`}
-                            </span>
-                          </span>
-                          <span className={it.price_on_request ? 'font-bold text-amber-600' : 'font-bold'}>
-                            {it.price_on_request ? 'بلا سعر' : formatIQD(it.line_total)}
-                          </span>
-                        </li>
-                      ))}
+                    <ul className="mb-3 grid gap-2">
+                      {(o.items_json ?? []).map((it, i) => {
+                        const key = `${o.id}:${it.product_id}`
+                        const byDozen = o.mode === 'wholesale' && it.qty % 12 === 0
+                        return (
+                          <li key={i}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="min-w-0 flex-1 truncate">
+                                {it.name}
+                                <span className="text-slate-400">
+                                  {' '}× {byDozen ? `${formatNumber(it.qty / 12)} درزن` : `${formatNumber(it.qty)} قطعة`}
+                                </span>
+                              </span>
+                              <span className={it.price_on_request ? 'font-bold text-amber-600' : 'font-bold'}>
+                                {it.price_on_request ? 'يُحدَّد عند التأكيد' : formatIQD(it.line_total)}
+                              </span>
+                            </div>
+
+                            {it.price_on_request && (
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 p-2">
+                                <Tag className="size-4 shrink-0 text-amber-600" />
+                                <input
+                                  inputMode="numeric" placeholder="سعر القطعة"
+                                  value={priceDraft[key] ?? ''}
+                                  onChange={(e) => setPriceDraft((d) => ({ ...d, [key]: e.target.value.replace(/\D/g, '') }))}
+                                  className="w-28 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-center text-sm font-bold focus:border-amber-500 focus:outline-none"
+                                />
+                                <span className="text-xs text-amber-800">
+                                  × {formatNumber(it.qty)} = {formatIQD((Number(priceDraft[key]) || 0) * it.qty)}
+                                </span>
+                                <button
+                                  type="button" disabled={pricing === key}
+                                  onClick={() => priceItem(o, it, false)}
+                                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                                >
+                                  {pricing === key ? '…' : 'تسعير الطلب'}
+                                </button>
+                                <button
+                                  type="button" disabled={pricing === key}
+                                  onClick={() => priceItem(o, it, true)}
+                                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+                                >
+                                  تسعير + اعتماده للمنتج
+                                </button>
+                              </div>
+                            )}
+                          </li>
+                        )
+                      })}
                     </ul>
 
                     <div className="mb-3 border-t border-slate-100 pt-2 text-slate-600">

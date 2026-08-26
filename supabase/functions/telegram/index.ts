@@ -27,8 +27,13 @@ const db = createClient(
 const iqd = (n: number | string) =>
   `${new Intl.NumberFormat('en-US').format(Math.round(Number(n) || 0))} د.ع`
 
+/** يقبل الأرقام العربية والفارسية واللاتينية */
+const digits = (s: string) => String(s ?? '')
+  .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+  .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+
 const num = (s: string) => {
-  const c = String(s ?? '').replace(/[^\d]/g, '')
+  const c = digits(s).replace(/[^\d]/g, '')
   return c === '' ? NaN : Number(c)
 }
 
@@ -391,6 +396,50 @@ async function startFlow(chat: number, flow: string, arg: string | undefined, ag
   void admin
 }
 
+/** نموذج الأسعار والكميات: القيم ظاهرة، وكل حقل يُملأ بزره */
+async function showProductForm(chat: number, d: Record<string, any>, admin: boolean, notice = '') {
+  const piece = d.sellBy === 'piece'
+  const money = (v: any) => (v === null || v === undefined || v === '' ? '—' : iqd(v))
+  const count = (v: any) => (v === null || v === undefined || v === '' ? '—' : String(v))
+  const mark = (f: string) => (d.field === f ? ' 👈' : '')
+
+  const totalQty = (d.dozenQty ?? 0) * 12 + (d.pieceQty ?? 0)
+  const perPiece = piece ? (d.wholesalePiece ?? null) : (d.dozenPrice ? Math.round(d.dozenPrice / 12) : null)
+
+  const lines: string[] = [
+    `➕ <b>${d.name}</b> — الخطوة 4`,
+    `📦 نوع البيع: <b>${piece ? 'بالقطعة فقط' : 'بالدرزن والقطعة'}</b>`,
+    '',
+  ]
+  if (admin) {
+    lines.push(piece
+      ? `💵 سعر الجملة للقطعة: <b>${money(d.wholesalePiece)}</b>${mark('wholesalePiece')}`
+      : `💵 سعر الدرزن (جملة): <b>${money(d.dozenPrice)}</b>${mark('dozenPrice')}`)
+    lines.push(`🏷 سعر القطعة (مفرد): <b>${money(d.retail)}</b>${mark('retail')}`, '')
+  }
+  if (!piece) lines.push(`📊 العدد الكلي بالدرزن: <b>${count(d.dozenQty)}</b>${mark('dozenQty')}`)
+  lines.push(`🔢 العدد الكلي بالقطعة: <b>${count(d.pieceQty)}</b>${mark('pieceQty')}`)
+  lines.push('', `📦 الإجمالي: <b>${totalQty}</b> قطعة`)
+  if (admin && perPiece) lines.push(`ℹ️ الجملة للقطعة: ${iqd(perPiece)}`)
+  if (d.field) lines.push('', `✍️ <b>أرسل الآن القيمة</b>`)
+  if (notice) lines.push('', notice)
+
+  const buttons: Row[] = []
+  if (admin) {
+    buttons.push(piece
+      ? [['💵 سعر الجملة للقطعة', 'pick:f_wholesalePiece'], ['🏷 سعر القطعة', 'pick:f_retail']]
+      : [['💵 سعر الدرزن', 'pick:f_dozenPrice'], ['🏷 سعر القطعة', 'pick:f_retail']])
+  }
+  buttons.push(piece
+    ? [['🔢 العدد بالقطعة', 'pick:f_pieceQty']]
+    : [['📊 العدد بالدرزن', 'pick:f_dozenQty'], ['🔢 العدد بالقطعة', 'pick:f_pieceQty']])
+  buttons.push([[piece ? '🔁 يُباع بالدرزن أيضاً' : '🔁 يُباع بالقطعة فقط', 'pick:toggleSell']])
+  buttons.push([['✅ متابعة للصورة', 'pick:next']])
+  buttons.push(cancelRow())
+
+  return screen(chat, lines.join('\n'), buttons, true)
+}
+
 const chunk = <T,>(a: T[], n: number): T[][] =>
   a.reduce<T[][]>((acc, x, i) => (i % n ? acc[acc.length - 1].push(x) : acc.push([x]), acc), [])
 
@@ -447,30 +496,45 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
 
       if (st.step === 'category') {
         if (!input.pick) return ask(chat, 'اختر الصنف من الأزرار.')
-        await step('qty', { categoryId: Number(input.pick) })
-        return ask(chat, '<b>الخطوة 4 من 7</b> — أرسل <b>العدد</b>\nبصيغة <code>درزن مفرد</code> مثال <code>2 3</code> = 27 قطعة\nأو رقماً واحداً للقطع.', [cancelRow()])
+        const seed = { categoryId: Number(input.pick), sellBy: 'dozen' }
+        await step('form', seed)
+        return showProductForm(chat, { ...d, ...seed }, admin)
       }
 
-      if (st.step === 'qty') {
-        const q = parseQty(t)
-        if (!q) return ask(chat, 'صيغة غير مفهومة. مثال: <code>2 3</code> أو <code>15</code>.')
-        if (!admin) { await step('photo', q); return ask(chat, '<b>الخطوة الأخيرة</b> — أرسل <b>صورة واضحة للمنتج</b>.', [[['⏭ بلا صورة', 'pick:skip']], cancelRow()]) }
-        await step('retail', q)
-        return ask(chat, '<b>الخطوة 5 من 7</b> — أرسل <b>سعر المفرد</b> بالدينار.\n(0 = «السعر عند الطلب»)', [cancelRow()])
-      }
+      // نموذج الأسعار والكميات — أزرار تُملأ بأي ترتيب
+      if (st.step === 'form') {
+        if (input.pick === 'toggleSell') {
+          const sellBy = d.sellBy === 'piece' ? 'dozen' : 'piece'
+          const extra: Record<string, any> = { sellBy, field: null }
+          if (sellBy === 'piece') { extra.dozenPrice = null; extra.dozenQty = null }
+          else extra.wholesalePiece = null
+          await step('form', extra)
+          return showProductForm(chat, { ...d, ...extra }, admin)
+        }
 
-      if (st.step === 'retail') {
-        const v = num(t)
-        if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
-        await step('wholesale', { retail: v })
-        return ask(chat, '<b>الخطوة 6 من 7</b> — أرسل <b>سعر الدرزن</b> بالدينار.\nسيُقسَّم على 12 لسعر القطعة بالجملة.', [cancelRow()])
-      }
+        if (input.pick && input.pick.startsWith('f_')) {
+          const field = input.pick.slice(2)
+          await step('form', { field })
+          return showProductForm(chat, { ...d, field }, admin)
+        }
 
-      if (st.step === 'wholesale') {
-        const v = num(t)
-        if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
-        await step('photo', { dozenPrice: v, wholesale: Math.round(v / 12) })
-        return ask(chat, '<b>الخطوة 7 من 7</b> — أرسل <b>صورة واضحة للمنتج</b>.', [[['⏭ بلا صورة', 'pick:skip']], cancelRow()])
+        if (input.pick === 'next') {
+          const totalQty = (d.dozenQty ?? 0) * 12 + (d.pieceQty ?? 0)
+          if (totalQty <= 0) return showProductForm(chat, d, admin, '⚠️ أدخل العدد أولاً — بالدرزن أو بالقطعة.')
+          await step('photo', { field: null })
+          return ask(chat, '📷 <b>الخطوة الأخيرة</b> — أرسل <b>صورة واضحة للمنتج</b>.',
+            [[['⏭ بلا صورة', 'pick:skip']], cancelRow()])
+        }
+
+        if (t) {
+          if (!d.field) return showProductForm(chat, d, admin, 'ℹ️ اضغط الحقل الذي تريد تعبئته أولاً.')
+          const v = num(t)
+          if (isNaN(v)) return showProductForm(chat, d, admin, '⚠️ أرسل رقماً — عربي أو لاتيني.')
+          const extra: Record<string, any> = { [d.field]: v, field: null }
+          await step('form', extra)
+          return showProductForm(chat, { ...d, ...extra }, admin)
+        }
+        return showProductForm(chat, d, admin)
       }
 
       if (st.step === 'photo') {
@@ -706,6 +770,37 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
       break
     }
 
+    // ------------------------------------------- تسعير بند «يُحدَّد عند التأكيد»
+    case 'priceItem': {
+      if (st.step === 'pick') {
+        if (!input.pick) return
+        const item = (d.unpriced ?? [])[Number(input.pick)]
+        if (!item) return
+        await step('amount', { item })
+        return ask(chat,
+          `🏷 <b>${item.name}</b>\nالكمية: <b>${item.qty}</b> قطعة\n\nأرسل <b>سعر القطعة</b> بالدينار.`,
+          [cancelRow()])
+      }
+      if (st.step === 'amount') {
+        const v = num(t)
+        if (isNaN(v) || v <= 0) return ask(chat, 'أرسل سعراً أكبر من صفر.')
+        await step('save', { price: v })
+        return ask(chat,
+          `السعر: <b>${iqd(v)}</b> × ${d.item.qty} = <b>${iqd(v * d.item.qty)}</b>\n\nهل أعتمد هذا السعر للمنتج نفسه في المتجر؟`,
+          [[['✅ نعم، اعتمده', 'pick:yes'], ['🚫 لهذا الطلب فقط', 'pick:no']], cancelRow()])
+      }
+      if (st.step === 'save') {
+        if (!input.pick) return
+        const { error } = await db.rpc('price_order_item', {
+          p_order_id: d.orderId, p_product_id: d.item.product_id,
+          p_unit_price: d.price, p_save_to_product: input.pick === 'yes',
+        })
+        if (error) return screen(chat, '⚠️ تعذّر التسعير: ' + error.message, [backRow()])
+        return showOrder(chat, d.orderId, admin)
+      }
+      break
+    }
+
     case 'setZoneFee': {
       const v = num(t)
       if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
@@ -719,8 +814,20 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
 
 // ------------------------------------------------------------ إنهاءات
 async function finishProduct(chat: number, d: any, agent: Agent, photoId: string | null) {
+  const piece = d.sellBy === 'piece'
+  const dozenQty = piece ? 0 : (d.dozenQty ?? 0)
+  const pieceQty = d.pieceQty ?? 0
+  const total = dozenQty * 12 + pieceQty
+  const retail = d.retail ?? 0
+  const wholesalePiece = piece
+    ? (d.wholesalePiece ?? 0)
+    : (d.dozenPrice ? Math.round(d.dozenPrice / 12) : 0)
+
   const { data: product, error } = await db.from('products')
-    .insert({ barcode: d.barcode, name: d.name, category_id: d.categoryId })
+    .insert({
+      barcode: d.barcode, name: d.name, category_id: d.categoryId,
+      sold_by: piece ? 'piece' : 'dozen',
+    })
     .select('id').single()
 
   if (error || !product) {
@@ -729,39 +836,46 @@ async function finishProduct(chat: number, d: any, agent: Agent, photoId: string
 
   let imageUrl: string | null = null
   if (photoId) imageUrl = await uploadPhoto(photoId, product.id)
-
   if (imageUrl) await db.from('products').update({ image_url: imageUrl }).eq('id', product.id)
 
-  const total = (d.dozen ?? 0) * 12 + (d.singles ?? 0)
   if (total > 0) {
     await db.from('stock_movements').insert({
       product_id: product.id, type: 'stock_in',
-      dozen_qty: d.dozen ?? 0, singles_qty: d.singles ?? 0,
+      dozen_qty: dozenQty, singles_qty: pieceQty,
       source: 'telegram_bot', note: `عبر البوت — ${agent.agent_name}`,
     })
   }
-  if (d.retail !== undefined) {
+
+  if (agent.role === 'admin') {
     await db.from('product_prices').upsert({
-      product_id: product.id, price_retail: d.retail ?? 0, price_wholesale: d.wholesale ?? 0,
+      product_id: product.id, price_retail: retail, price_wholesale: wholesalePiece,
       updated_at: new Date().toISOString(),
     })
   }
 
-  // تأكيد الظهور في المتجر: يظهر فقط إن كان مفعَّلاً وسعره أكبر من صفر
+  // تأكيد الظهور فعلياً في المتجر (لا وعد نظري)
   const { data: live } = await db.from('storefront_products').select('id').eq('id', product.id).maybeSingle()
   const visible = Boolean(live)
+
+  const priceLines = agent.role === 'admin'
+    ? `🏷 سعر القطعة: <b>${iqd(retail)}</b>\n` +
+      (piece
+        ? `💵 سعر الجملة للقطعة: <b>${iqd(wholesalePiece)}</b>\n`
+        : `💵 سعر الدرزن: <b>${iqd(d.dozenPrice ?? 0)}</b> (${iqd(wholesalePiece)} للقطعة)\n`)
+    : ''
 
   const caption =
     `✅ <b>أُضيف المنتج</b>\n\n` +
     `📦 <b>${d.name}</b>\n` +
     `🔖 الباركود: <code>${d.barcode ?? 'بلا'}</code>\n` +
-    `📊 الكمية: <b>${total}</b> قطعة\n` +
-    (d.retail !== undefined
-      ? `🏷 المفرد: <b>${iqd(d.retail)}</b>\n📦 الدرزن: <b>${iqd(d.dozenPrice ?? 0)}</b> (${iqd(d.wholesale ?? 0)} للقطعة)\n` : '') +
+    `🛒 نوع البيع: <b>${piece ? 'بالقطعة فقط' : 'بالدرزن والقطعة'}</b>\n` +
+    `📊 الكمية: <b>${total}</b> قطعة` +
+    (dozenQty ? ` (${dozenQty} درزن + ${pieceQty} قطعة)` : '') + `\n` +
+    priceLines +
     `🖼 الصورة: ${imageUrl ? '✅ مرفوعة' : '—'}\n\n` +
     (visible
-      ? `🟢 <b>ظاهر الآن في المتجر</b>${STORE_URL ? `\n${STORE_URL}/retail` : ''}`
-      : `🟡 <b>غير ظاهر في المتجر</b> — السعر 0 يعني «السعر عند الطلب» أو المنتج موقوف.`)
+      ? `🟢 <b>ظاهر الآن في المتجر</b>`
+      : `🟡 <b>غير ظاهر في المتجر</b> — السعر 0 يعني «السعر عند الطلب».`)
 
   const buttons: Row[] = [[['➕ منتج آخر', 'f:addProduct'], ['💵 تعديل السعر', 'f:setPrice']], backRow()]
 
@@ -853,11 +967,29 @@ async function showOrder(chat: number, id: string, admin: boolean) {
   const { data: o } = await db.from('orders').select('*').eq('id', id).maybeSingle()
   if (!o) return screen(chat, '❌ لم أجد الطلب.', [backRow()])
 
-  const lines = (o.items_json ?? []).map((i: any, n: number) =>
-    `${n + 1}. ${i.name} — ${o.mode === 'wholesale' ? `${i.qty / 12} درزن` : `${i.qty} قطعة`}` +
-    (i.price_on_request ? ' — بلا سعر ⚠️' : ` = ${iqd(i.line_total)}`)).join('\n')
+  const items = (o.items_json ?? []) as any[]
+  const lines = items.map((i: any, n: number) =>
+    `${n + 1}. ${i.name} — ${o.mode === 'wholesale' && i.qty % 12 === 0 ? `${i.qty / 12} درزن` : `${i.qty} قطعة`}` +
+    (i.price_on_request ? ' — ⚠️ يُحدَّد عند التأكيد' : ` = ${iqd(i.line_total)}`)).join('\n')
 
+  const unpriced = items.filter((i: any) => i.price_on_request)
   const phone = String(o.customer_phone ?? '').replace(/\D/g, '').replace(/^0/, '964')
+
+  // حالة المعالج تُحفظ لتعمل أزرار التسعير أدناه
+  const cur = await getState(chat)
+  await putState(chat, {
+    ...cur, flow: 'priceItem', step: 'pick',
+    data: { orderId: o.id, unpriced: unpriced.map((i: any) => ({ product_id: i.product_id, name: i.name, qty: i.qty })) },
+  })
+
+  const buttons: Row[] = [
+    ...unpriced.map((i: any, n: number) => [[`🏷 تسعير: ${i.name}`, `pick:${n}`]] as Row),
+    [['🟠 مؤكد', `ost:${o.id}:confirmed`], ['🟢 مُسلَّم', `ost:${o.id}:delivered`]],
+    [['🔴 إلغاء الطلب', `ost:${o.id}:cancelled`]],
+    phone.length >= 10 ? [['💬 مراسلة الزبون', `https://wa.me/${phone}`]] : [],
+    [['⬅️ كل الطلبات', 'r:orders']],
+    backRow(),
+  ]
 
   return screen(chat,
     `🧾 <b>طلب #${o.order_number}</b> — ${OSTAT[o.status]}\n` +
@@ -867,13 +999,9 @@ async function showOrder(chat: number, id: string, admin: boolean) {
     (o.customer_note ? `📝 ${o.customer_note}\n` : '') +
     `🛒 ${o.mode === 'wholesale' ? 'جملة' : 'مفرد'} · ${o.payment === 'debt' ? 'آجل' : 'نقد'}\n\n` +
     `${lines}\n\n` +
-    `البضاعة: ${iqd(o.subtotal)}\nالتوصيل: ${iqd(o.delivery_fee)}\n💰 <b>المجموع: ${iqd(o.total_amount)}</b>`,
-    [
-      [['🟠 مؤكد', `ost:${o.id}:confirmed`], ['🟢 مُسلَّم', `ost:${o.id}:delivered`]],
-      [['🔴 إلغاء الطلب', `ost:${o.id}:cancelled`]],
-      phone.length >= 10 ? [['💬 مراسلة الزبون', `https://wa.me/${phone}`]] : [],
-      [['⬅️ كل الطلبات', 'r:orders']], backRow(),
-    ].map((r) => r) as Row[])
+    `البضاعة: ${iqd(o.subtotal)}\nالتوصيل: ${iqd(o.delivery_fee)}\n💰 <b>المجموع: ${iqd(o.total_amount)}</b>` +
+    (unpriced.length ? `\n\n⚠️ <b>${unpriced.length}</b> بند بلا سعر — سعّره ليكتمل المجموع.` : ''),
+    buttons, true)
 }
 
 async function setOrderStatus(chat: number, id: string, status: string, admin: boolean) {
@@ -1046,7 +1174,7 @@ async function toggleAgent(chat: number, telegramId: number, admin: boolean) {
 
 // -------------------------------------------------------------- مساعدات
 function parseQty(text: string): { dozen: number; singles: number } | null {
-  const parts = String(text).trim().split(/[\s،,x×*]+/).map((p) => p.replace(/[^\d]/g, '')).filter(Boolean)
+  const parts = digits(text).trim().split(/[\s،,x×*]+/).map((p) => p.replace(/[^\d]/g, '')).filter(Boolean)
   if (!parts.length) return null
   if (parts.length === 1) return { dozen: 0, singles: Number(parts[0]) }
   return { dozen: Number(parts[0]), singles: Number(parts[1]) }

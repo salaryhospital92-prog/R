@@ -148,7 +148,8 @@ export default function Checkout() {
         {products.map((p) => {
           const qty = cart.items[p.id] ?? 0
           const price = priceOf(p)
-          const step = stepFor(cart.mode)
+          const step = stepFor(cart.mode, p.sold_by)
+          const byDozen = step === 12
           const maxQty = Math.floor(p.quantity_single / step) * step
           return (
             <div key={p.id} className="animate-fade-up card p-3">
@@ -181,7 +182,7 @@ export default function Checkout() {
                     <Minus className="size-4" />
                   </button>
                   <span className="text-[13px] font-extrabold text-brand-900">
-                    {isWholesale
+                    {byDozen
                       ? `${formatNumber(qty / 12)} درزن — ${formatNumber(qty)} قطعة`
                       : `${formatNumber(qty)} قطعة`}
                   </span>
@@ -194,13 +195,13 @@ export default function Checkout() {
                 </div>
                 <input
                   type="number" min={step} step={step} max={maxQty} inputMode="numeric"
-                  value={isWholesale ? qty / 12 : qty}
+                  value={byDozen ? qty / 12 : qty}
                   onChange={(e) => {
                     const n = Math.max(0, Math.min(Number(e.target.value) || 0, maxQty / step))
                     cart.setQty(p.id, n * step)
                   }}
                   className="w-20 rounded-2xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm font-bold focus:border-brand-500 focus:outline-none"
-                  aria-label={isWholesale ? 'عدد الدرزن' : 'عدد القطع'}
+                  aria-label={byDozen ? 'عدد الدرزن' : 'عدد القطع'}
                 />
               </div>
               {qty >= maxQty && (

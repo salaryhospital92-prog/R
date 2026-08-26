@@ -162,7 +162,7 @@ export default function Catalog({ mode }) {
             </span>
             <span className="min-w-0 text-start">
               <span className="block text-[11px] text-white/60">
-                {isWholesale ? `${formatNumber(cart.units / 12)} درزن` : `${formatNumber(cart.units)} قطعة`}
+                {formatNumber(cart.units)} قطعة
               </span>
               <span className="block font-extrabold tracking-tight">{formatIQD(subtotal)}</span>
             </span>

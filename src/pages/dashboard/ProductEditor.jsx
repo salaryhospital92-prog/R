@@ -26,6 +26,7 @@ export default function ProductEditor() {
     category_id: '',
     image_url: '',
     quantity_single: 0,
+    sold_by: 'dozen',
   })
   const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
   const [dozens, setDozens] = useState('')
@@ -48,8 +49,8 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, category_id, image_url, quantity_single'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
       if (error || !data) {
@@ -61,6 +62,7 @@ export default function ProductEditor() {
           category_id: data.category_id ? String(data.category_id) : '',
           image_url: data.image_url ?? '',
           quantity_single: data.quantity_single,
+          sold_by: data.sold_by ?? 'dozen',
         })
         if (data.product_prices) {
           setPrices({
@@ -93,6 +95,7 @@ export default function ProductEditor() {
         barcode: form.barcode.trim() || null,
         name: form.name.trim(),
         category_id: Number(form.category_id),
+        sold_by: form.sold_by,
       }
 
       let productId = id
@@ -201,6 +204,26 @@ export default function ProductEditor() {
             <option value="">— اختر الصنف —</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+        </div>
+
+        <div>
+          <span className={label}>وحدة البيع</span>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: 'dozen', t: 'بالدرزن والقطعة', s: 'الجملة تُحسب بالدرزن' },
+              { v: 'piece', t: 'بالقطعة فقط', s: 'لا يُباع بالدرزن' },
+            ].map((o) => (
+              <button
+                key={o.v} type="button" onClick={() => setForm({ ...form, sold_by: o.v })}
+                className={`rounded-xl border-2 p-2.5 text-start transition ${
+                  form.sold_by === o.v ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'
+                }`}
+              >
+                <span className="block text-sm font-bold">{o.t}</span>
+                <span className="block text-[11px] text-slate-500">{o.s}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div>

@@ -359,3 +359,111 @@ alter table public.telegram_invites enable row level security;
 drop policy if exists "tg_invites_admin" on public.telegram_invites;
 create policy "tg_invites_admin" on public.telegram_invites
   for all using (public.is_admin()) with check (public.is_admin());
+
+
+-- ---------------------------------------------------------------------
+-- 9) وحدة البيع: بعض البضاعة لا تُباع بالدرزن — تُباع بالقطعة فقط
+--    'dozen' = يُباع بالدرزن (الجملة تُحسب بالدرزن، خطوة الكمية 12)
+--    'piece' = يُباع بالقطعة فقط (خطوة الكمية 1 حتى في وضع الجملة)
+-- ---------------------------------------------------------------------
+alter table public.products
+  add column if not exists sold_by text not null default 'dozen';
+
+do $$ begin
+  alter table public.products add constraint products_sold_by_check
+    check (sold_by in ('dozen', 'piece'));
+exception when duplicate_object then null; end $$;
+
+drop view if exists public.storefront_products;
+create view public.storefront_products
+with (security_invoker = off) as
+  select p.id,
+         p.name,
+         p.category_id,
+         c.name as category,
+         p.image_url,
+         p.quantity_single,
+         p.sold_by,
+         (p.quantity_single > 0) as in_stock,
+         pr.price_retail,
+         pr.price_wholesale
+    from public.products p
+    join public.categories c      on c.id = p.category_id
+    join public.product_prices pr on pr.product_id = p.id
+   where p.is_active = true;
+
+grant select on public.storefront_products to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- 10) تسعير بند «يُحدَّد عند التأكيد» داخل طلب قائم
+--     المدير يضع السعر عند تأكيد الطلب، فتُحدَّث لقطة البنود والمجاميع
+--     في القاعدة نفسها — لا حساب في المتصفح.
+-- ---------------------------------------------------------------------
+create or replace function public.price_order_item(
+  p_order_id   uuid,
+  p_product_id uuid,
+  p_unit_price bigint,
+  p_save_to_product boolean default false
+)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_order public.orders;
+  v_items jsonb := '[]'::jsonb;
+  v_line  jsonb;
+  v_sub   bigint := 0;
+  v_hit   boolean := false;
+begin
+  if not public.is_admin() then
+    raise exception 'هذه العملية للمدير فقط';
+  end if;
+  if p_unit_price is null or p_unit_price < 0 then
+    raise exception 'سعر غير صالح';
+  end if;
+
+  select * into v_order from public.orders where id = p_order_id for update;
+  if v_order.id is null then
+    raise exception 'الطلب غير موجود';
+  end if;
+
+  for v_line in select * from jsonb_array_elements(v_order.items_json) loop
+    if (v_line->>'product_id')::uuid = p_product_id then
+      v_hit  := true;
+      v_line := v_line
+        || jsonb_build_object(
+             'unit_price',       p_unit_price,
+             'line_total',       p_unit_price * (v_line->>'qty')::int,
+             'price_on_request', (p_unit_price = 0));
+    end if;
+    v_sub   := v_sub + (v_line->>'line_total')::bigint;
+    v_items := v_items || v_line;
+  end loop;
+
+  if not v_hit then
+    raise exception 'البند غير موجود في هذا الطلب';
+  end if;
+
+  update public.orders
+     set items_json   = v_items,
+         subtotal     = v_sub,
+         total_amount = v_sub + delivery_fee
+   where id = p_order_id
+  returning * into v_order;
+
+  -- خيار: اعتماد السعر للمنتج نفسه ليظهر في المتجر مستقبلاً
+  if p_save_to_product then
+    update public.product_prices
+       set price_retail = case when v_order.mode = 'retail'    then p_unit_price else price_retail end,
+           price_wholesale = case when v_order.mode = 'wholesale' then p_unit_price else price_wholesale end,
+           updated_at = now()
+     where product_id = p_product_id;
+  end if;
+
+  return jsonb_build_object(
+    'subtotal',     v_order.subtotal,
+    'delivery_fee', v_order.delivery_fee,
+    'total_amount', v_order.total_amount,
+    'items',        v_order.items_json);
+end $$;
+
+grant execute on function public.price_order_item(uuid, uuid, bigint, boolean) to authenticated;
