@@ -90,6 +90,31 @@ for (const p of products ?? []) {
   count++
 }
 
+// صفحات المسارات الرئيسية — بدونها يعيد GitHub Pages رمز 404 وإن عُرض التطبيق
+const ROUTES = [
+  { path: 'retail',    title: 'شراء مفرد — أسواق الرفاعي',
+    desc: 'تسوّق بالقطعة: عطور، منتجات بشرة، كوزمتك، مواد منزلية ومعطرات. توصيل لكل المحافظات.' },
+  { path: 'wholesale', title: 'شراء جملة — أسواق الرفاعي',
+    desc: 'أسعار الجملة بالدرزن لكل الأصناف. توصيل لكل المحافظات — اطلب عبر واتساب.' },
+  { path: 'checkout',  title: 'سلّة المشتريات — أسواق الرفاعي', desc: null },
+  { path: 'dashboard', title: 'لوحة الإدارة — أسواق الرفاعي', desc: null },
+]
+
+for (const r of ROUTES) {
+  let html = template.replace(/<title>[^<]*<\/title>/, `<title>${esc(r.title)}</title>`)
+  html = setMeta(html, 'property', 'og:title', r.title)
+  html = setMeta(html, 'name', 'twitter:title', r.title)
+  html = setMeta(html, 'property', 'og:url', `${SITE}/${r.path}`)
+  html = html.replace(/(<link rel="canonical" href=")[^"]*(")/, `$1${SITE}/${r.path}$2`)
+  if (r.desc) {
+    html = setMeta(html, 'name', 'description', r.desc)
+    html = setMeta(html, 'property', 'og:description', r.desc)
+    html = setMeta(html, 'name', 'twitter:description', r.desc)
+  }
+  mkdirSync(join(DIST, r.path), { recursive: true })
+  writeFileSync(join(DIST, r.path, 'index.html'), html)
+}
+
 // خريطة الموقع لمحركات البحث
 const urls = [SITE + '/', SITE + '/retail', SITE + '/wholesale',
   ...(products ?? []).map((p) => `${SITE}/p/${p.code}`)]
