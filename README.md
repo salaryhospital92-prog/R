@@ -8,8 +8,9 @@ React (Vite) · Tailwind CSS v4 · Lucide React · html5-qrcode · Supabase (Pos
 
 ## الحالة الحالية
 
-قاعدة البيانات **منفّذة فعلياً** على المشروع `wyovsacbogqfojtacast` وفحوصات السلامة نجحت كلها،
-وملف `.env` معبّأ بمفاتيح المشروع. يبقى إجراء واحد يدوي: إنشاء حساب المدير (أدناه).
+قاعدة البيانات **منفّذة فعلياً** على المشروع `slrhxeozdadonarkclba` في **فرانكفورت
+(eu-central-1)** — الأقرب للعراق — وفحوصات السلامة الـ17 نجحت كلها، وملف `.env`
+معبّأ بمفاتيح المشروع. يبقى إجراء واحد يدوي: إنشاء حساب المدير (أدناه).
 
 ### الخطوة اليدوية الوحيدة — حساب المدير
 Supabase يسجّل الدخول بالبريد الإلكتروني لا باسم مستخدم، فاختر بريداً ولو داخلياً.
@@ -42,7 +43,7 @@ npm run dev
 ### إعادة تنفيذ المخطط أو تعديله
 الملف `supabase/schema.sql` قابل لإعادة التنفيذ بأمان. نفّذه إما بلصقه في SQL Editor أو:
 ```bash
-PGPASS='كلمة-سر-قاعدة-البيانات' node supabase/run-sql.mjs supabase/schema.sql db.wyovsacbogqfojtacast.supabase.co 5432 postgres
+PGPASS='كلمة-سر-قاعدة-البيانات' node supabase/run-sql.mjs supabase/schema.sql aws-0-eu-central-1.pooler.supabase.com 5432 postgres.slrhxeozdadonarkclba
 ```
 
 ## هيكل المشروع
