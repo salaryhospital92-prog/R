@@ -23,8 +23,8 @@ export default function Products() {
     setLoading(true)
     // موظف الإدخال لا يطلب الأسعار إطلاقاً — والخادم لا يعطيه إياها أصلاً (RLS)
     const select = isAdmin
-      ? 'id, barcode, name, image_url, quantity_single, category_id, categories(name), product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, image_url, quantity_single, category_id, categories(name)'
+      ? 'id, barcode, name, image_url, quantity_single, category_id, sold_by, categories(name), product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, image_url, quantity_single, category_id, sold_by, categories(name)'
 
     const [p, c] = await Promise.all([
       supabase.from('products').select(select).order('created_at', { ascending: false }).limit(200),
@@ -55,17 +55,17 @@ export default function Products() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-bold">المنتجات</h1>
-        <div className="ms-auto flex gap-2">
+        <h1 className="text-lg font-extrabold">المنتجات</h1>
+        <div className="ms-auto flex flex-1 gap-2 sm:flex-none">
           <button
             onClick={() => setScanning(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-900"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-white hover:bg-slate-900 sm:flex-none"
           >
             <ScanLine className="size-4" /> مسح باركود
           </button>
           <Link
             to="/dashboard/product/new"
-            className="flex items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-sm font-bold text-white hover:bg-brand-700 sm:flex-none"
           >
             <Plus className="size-4" /> منتج جديد
           </Link>
@@ -127,7 +127,10 @@ export default function Products() {
                     <p className="mt-0.5 text-xs text-brand-700">
                       مفرد: {p.product_prices.price_retail > 0 ? formatIQD(p.product_prices.price_retail) : 'عند الطلب'}
                       {' · '}
-                      جملة: {p.product_prices.price_wholesale > 0 ? formatIQD(p.product_prices.price_wholesale) : 'عند الطلب'}
+                      {p.sold_by === 'piece' ? 'جملة' : 'الدرزن'}:{' '}
+                      {p.product_prices.price_wholesale > 0
+                        ? formatIQD(p.product_prices.price_wholesale * (p.sold_by === 'piece' ? 1 : 12))
+                        : 'عند الطلب'}
                     </p>
                   )}
                 </div>

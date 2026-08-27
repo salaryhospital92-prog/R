@@ -63,6 +63,13 @@ const kb = (...r: Row[]) =>
       data.startsWith('http') ? { text, url: data } : { text, callback_data: data }))
 
 const backRow = (): Row => [['⬅️ القائمة الرئيسية', 'm:main']]
+
+/** بحث جوجل — بالباركود إن وُجد فهو أدق من الاسم */
+const googleRow = (term: string, images = false): Row =>
+  term
+    ? [[images ? '🔍 صور المنتج في جوجل' : '🔍 ابحث عنه في جوجل',
+        `https://www.google.com/search?${images ? 'tbm=isch&' : ''}q=${encodeURIComponent(term)}`]]
+    : []
 const cancelRow = (): Row => [['✖️ إلغاء', 'm:main']]
 
 // ------------------------------------------------- حالة المحادثة والشاشة
@@ -483,7 +490,10 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
           }
         }
         await step('name', { barcode: code })
-        return ask(chat, `✅ الباركود: <code>${code ?? 'بلا'}</code>\n\n<b>الخطوة 2 من 7</b> — أرسل <b>اسم المنتج</b>.`, [cancelRow()])
+        return ask(chat,
+          `✅ الباركود: <code>${code ?? 'بلا'}</code>\n\n<b>الخطوة 2 من 7</b> — أرسل <b>اسم المنتج</b>.` +
+          (code ? '\n\nلا تعرف اسمه؟ ابحث عن الباركود في جوجل من الزر أدناه.' : ''),
+          [googleRow(code ?? ''), cancelRow()])
       }
 
       if (st.step === 'name') {
@@ -522,8 +532,11 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
           const totalQty = (d.dozenQty ?? 0) * 12 + (d.pieceQty ?? 0)
           if (totalQty <= 0) return showProductForm(chat, d, admin, '⚠️ أدخل العدد أولاً — بالدرزن أو بالقطعة.')
           await step('photo', { field: null })
-          return ask(chat, '📷 <b>الخطوة الأخيرة</b> — أرسل <b>صورة واضحة للمنتج</b>.',
-            [[['⏭ بلا صورة', 'pick:skip']], cancelRow()])
+          return ask(chat,
+            '📷 <b>الخطوة الأخيرة</b> — أرسل <b>صورة واضحة للمنتج</b>.\n' +
+            'من الكاميرا أو من معرض الصور — كلاهما يعمل.\n' +
+            'ولا تجد صورة؟ ابحث في جوجل، احفظها في جهازك، ثم أرسلها من المعرض.',
+            [googleRow(d.barcode || d.name || '', true), [['⏭ بلا صورة', 'pick:skip']], cancelRow()])
         }
 
         if (t) {
@@ -539,7 +552,10 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
 
       if (st.step === 'photo') {
         if (input.pick === 'skip') return finishProduct(chat, d, agent, null)
-        if (!input.photo) return ask(chat, 'أرسل صورة المنتج، أو اضغط «بلا صورة».')
+        if (!input.photo) {
+          return ask(chat, 'أرسل صورة المنتج — من الكاميرا أو المعرض — أو اضغط «بلا صورة».',
+            [googleRow(d.barcode || d.name || '', true), [['⏭ بلا صورة', 'pick:skip']], cancelRow()])
+        }
         return finishProduct(chat, d, agent, input.photo)
       }
       break
@@ -587,28 +603,40 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
         const p = term ? await findProduct(term) : null
         if (!p) return ask(chat, '❌ لم أجد منتجاً مطابقاً.')
         const { data: pr } = await db.from('product_prices').select('*').eq('product_id', p.id).maybeSingle()
-        await step('retail', { productId: p.id, productName: p.name })
+        const byDozen = (p as any).sold_by !== 'piece'
+        const w = pr?.price_wholesale ?? 0
+        await step('retail', { productId: p.id, productName: p.name, byDozen })
         return ask(chat,
-          `💵 <b>${p.name}</b>\nالمفرد الحالي: ${iqd(pr?.price_retail ?? 0)}\nالجملة الحالية: ${iqd(pr?.price_wholesale ?? 0)} للقطعة\n\nأرسل <b>سعر المفرد</b> الجديد.`,
+          `💵 <b>${p.name}</b>\n` +
+          `🏷 المفرد الحالي: ${iqd(pr?.price_retail ?? 0)}\n` +
+          (byDozen
+            ? `📦 الدرزن الحالي: ${iqd(w * 12)} (${iqd(w)} للقطعة)\n`
+            : `📦 الجملة الحالية: ${iqd(w)} للقطعة\n`) +
+          `\nأرسل <b>سعر المفرد</b> الجديد.`,
           [cancelRow()])
       }
       if (st.step === 'retail') {
         const v = num(t)
         if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
         await step('wholesale', { retail: v })
-        return ask(chat, 'أرسل <b>سعر الدرزن</b> (سيُقسَّم على 12).', [cancelRow()])
+        return ask(chat, d.byDozen === false
+          ? 'أرسل <b>سعر الجملة للقطعة</b>.'
+          : 'أرسل <b>سعر الدرزن</b> (ثمن 12 قطعة — يُقسَّم على 12 تلقائياً).', [cancelRow()])
       }
       if (st.step === 'wholesale') {
         const v = num(t)
         if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
-        const wholesale = Math.round(v / 12)
+        const wholesale = d.byDozen === false ? v : Math.round(v / 12)
         const { error } = await db.from('product_prices').upsert({
           product_id: d.productId, price_retail: d.retail, price_wholesale: wholesale,
           updated_at: new Date().toISOString(),
         })
         if (error) return screen(chat, '⚠️ تعذّر الحفظ.', [backRow()])
         return screen(chat,
-          `✅ <b>${d.productName}</b>\n\n🏷 المفرد: <b>${iqd(d.retail)}</b>\n📦 الجملة: <b>${iqd(wholesale)}</b> للقطعة (${iqd(v)} للدرزن)`,
+          `✅ <b>${d.productName}</b>\n\n🏷 المفرد: <b>${iqd(d.retail)}</b>\n` +
+          (d.byDozen === false
+            ? `📦 الجملة: <b>${iqd(wholesale)}</b> للقطعة`
+            : `📦 الدرزن: <b>${iqd(v)}</b> (${iqd(wholesale)} للقطعة)`),
           [[['💵 تسعير منتج آخر', 'f:setPrice']], backRow()])
       }
       break
@@ -1188,7 +1216,7 @@ function parseQty(text: string): { dozen: number; singles: number } | null {
 async function findProduct(term: string) {
   const q = term.trim()
   if (!q) return null
-  const cols = 'id, code, name, quantity_single'
+  const cols = 'id, code, name, quantity_single, sold_by'
   const { data: byCode } = await db.from('products').select(cols).eq('barcode', q).maybeSingle()
   if (byCode) return byCode
   // رمز صفحة المنتج القصير يصلح للبحث أيضاً
@@ -1233,7 +1261,11 @@ async function quickSearch(chat: number, term: string, admin: boolean) {
   let extra = ''
   if (admin) {
     const { data: pr } = await db.from('product_prices').select('*').eq('product_id', p.id).maybeSingle()
-    extra = `\n🏷 المفرد: ${iqd(pr?.price_retail ?? 0)}\n📦 الجملة: ${iqd(pr?.price_wholesale ?? 0)} للقطعة`
+    const w = pr?.price_wholesale ?? 0
+    extra = `\n🏷 المفرد: ${iqd(pr?.price_retail ?? 0)}\n` +
+      ((p as any).sold_by === 'piece'
+        ? `📦 الجملة: ${iqd(w)} للقطعة`
+        : `📦 الدرزن: ${iqd(w * 12)} (${iqd(w)} للقطعة)`)
   }
   return screen(chat,
     `📦 <b>${p.name}</b>\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}` +
@@ -1242,6 +1274,7 @@ async function quickSearch(chat: number, term: string, admin: boolean) {
       STORE_URL ? [['🔗 صفحة المنتج', `${STORE_URL}/p/${p.code}`]] : [],
       [['📥 إضافة كمية', 'f:addStock']],
       admin ? [['💵 تسعير', 'f:setPrice']] : [],
+      googleRow(p.name, true),
       backRow(),
     ])
 }

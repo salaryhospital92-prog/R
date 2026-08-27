@@ -29,13 +29,14 @@ export default function Layout() {
   return (
     <div className="min-h-dvh">
       <header className="glass sticky top-0 z-30">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 pt-3">
-          <img src={asset('logo-mark.png')} alt="" className="size-9" />
-          <span className="font-extrabold">أسواق الرفاعي</span>
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 pt-3 sm:gap-3 sm:px-4">
+          <img src={asset('logo-mark.png')} alt="" className="size-8 shrink-0 sm:size-9" />
+          <span className="truncate font-extrabold">أسواق الرفاعي</span>
 
-          <span className="ms-auto flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-[11px] font-bold ring-1 ring-slate-900/5">
+          {/* الاسم يظهر على الشاشات الواسعة، والأيقونة وحدها على الجوال */}
+          <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold ring-1 ring-slate-900/5 sm:px-2.5">
             {isAdmin ? <ShieldCheck className="size-3.5 text-brand-600" /> : <UserRound className="size-3.5 text-slate-500" />}
-            {profile?.full_name || (isAdmin ? 'مدير' : 'مدخل بيانات')}
+            <span className="hidden sm:inline">{profile?.full_name || (isAdmin ? 'مدير' : 'مدخل بيانات')}</span>
           </span>
           {isAdmin && permission !== 'unsupported' && (
             <button
@@ -45,14 +46,15 @@ export default function Layout() {
                 permission === 'granted' ? 'text-brand-600 hover:bg-brand-50' : 'text-slate-400 hover:bg-slate-100'
               }`}
               aria-label="تنبيهات الطلبات"
+              style={{ padding: '0.375rem' }}
             >
               {permission === 'granted' ? <BellRing className="size-4.5" /> : <Bell className="size-4.5" />}
             </button>
           )}
-          <Link to="/" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="عرض المتجر">
+          <Link to="/" className="shrink-0 rounded-xl p-1.5 text-slate-500 hover:bg-slate-100 sm:p-2" aria-label="عرض المتجر">
             <Store className="size-4.5" />
           </Link>
-          <button onClick={signOut} className="rounded-xl p-2 text-red-600 hover:bg-red-50" aria-label="خروج">
+          <button onClick={signOut} className="shrink-0 rounded-xl p-1.5 text-red-600 hover:bg-red-50 sm:p-2" aria-label="خروج">
             <LogOut className="size-4.5" />
           </button>
         </div>
@@ -83,7 +85,7 @@ export default function Layout() {
         </button>
       )}
 
-      <main className="mx-auto max-w-5xl p-4">
+      <main className="mx-auto max-w-5xl p-3 sm:p-4">
         <Outlet />
       </main>
     </div>

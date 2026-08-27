@@ -21,7 +21,7 @@ export default function Prices() {
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name, categories(name), product_prices(price_retail, price_wholesale)')
+      .select('id, name, sold_by, categories(name), product_prices(price_retail, price_wholesale)')
       .order('name')
       .then(({ data, error }) => {
         if (error) setError('تعذّر التحميل: ' + error.message)
@@ -30,14 +30,18 @@ export default function Prices() {
       })
   }, [])
 
+  // الجملة تُدخَل وتُعرض بسعر الدرزن (لغة السوق)، وتُخزَّن للقطعة (12 ÷)
+  const byDozen = (r) => r.sold_by !== 'piece'
+  const toInput = (r) => {
+    const w = r.product_prices?.price_wholesale ?? 0
+    return String(byDozen(r) ? w * 12 : w)
+  }
+
   const startEdit = (r) => {
     setSavedId(null)
     setError('')
     setEditing(r.id)
-    setDraft({
-      retail: String(r.product_prices?.price_retail ?? 0),
-      wholesale: String(r.product_prices?.price_wholesale ?? 0),
-    })
+    setDraft({ retail: String(r.product_prices?.price_retail ?? 0), wholesale: toInput(r) })
   }
 
   const cancel = () => { setEditing(null); setDraft({ retail: '', wholesale: '' }) }
@@ -45,10 +49,11 @@ export default function Prices() {
   const save = async (r) => {
     setBusy(true)
     setError('')
+    const entered = Math.max(0, Number(draft.wholesale) || 0)
     const payload = {
       product_id: r.id,
       price_retail: Math.max(0, Number(draft.retail) || 0),
-      price_wholesale: Math.max(0, Number(draft.wholesale) || 0),
+      price_wholesale: byDozen(r) ? Math.round(entered / 12) : entered,
       updated_at: new Date().toISOString(),
     }
     const { error } = await supabase.from('product_prices').upsert(payload)
@@ -77,8 +82,9 @@ export default function Prices() {
         <Tags className="size-5 text-brand-600" /> الأسعار
       </h1>
       <p className="mb-4 text-xs leading-relaxed text-slate-500">
-        سعر الجملة يُدخل <b>للقطعة</b> ويظهر مقابله سعر الدرزن. اترك السعر 0 ليظهر
-        المنتج في المتجر بـ«السعر عند الطلب».
+        <b>سعر الدرزن</b> = ثمن 12 قطعة. النظام يقسّمه على 12 ليحسب سعر القطعة
+        بالجملة. والبضاعة التي تُباع بالقطعة فقط يُدخل سعر جملتها للقطعة مباشرةً.
+        اترك السعر 0 ليظهر المنتج في المتجر بـ«السعر عند الطلب».
       </p>
 
       <div className="relative mb-4">
@@ -126,7 +132,9 @@ export default function Prices() {
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[11px] font-bold text-slate-500">الجملة — للقطعة</span>
+                        <span className="mb-1 block text-[11px] font-bold text-slate-500">
+                          {byDozen(r) ? 'سعر الدرزن (12 قطعة)' : 'الجملة — للقطعة'}
+                        </span>
                         <input
                           inputMode="numeric" value={draft.wholesale}
                           onChange={(e) => setDraft({ ...draft, wholesale: e.target.value.replace(/\D/g, '') })}
@@ -135,9 +143,11 @@ export default function Prices() {
                       </label>
                     </div>
 
-                    <p className="mt-2 text-center text-[11px] text-slate-500">
-                      الدرزن = <b className="text-slate-700">{formatIQD((Number(draft.wholesale) || 0) * 12)}</b>
-                    </p>
+                    {byDozen(r) && (
+                      <p className="mt-2 text-center text-[11px] text-slate-500">
+                        القطعة بالجملة = <b className="text-slate-700">{formatIQD(Math.round((Number(draft.wholesale) || 0) / 12))}</b>
+                      </p>
+                    )}
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
@@ -164,12 +174,14 @@ export default function Prices() {
                         </p>
                       </div>
                       <div className="rounded-xl bg-slate-50 p-2.5">
-                        <p className="text-[11px] text-slate-500">الجملة — للقطعة</p>
-                        <p className={`text-sm font-extrabold tabular-nums ${wholesale ? 'text-brand-700' : 'text-amber-600'}`}>
-                          {wholesale ? formatIQD(wholesale) : 'عند الطلب'}
+                        <p className="text-[11px] text-slate-500">
+                          {byDozen(r) ? 'سعر الدرزن' : 'الجملة — للقطعة'}
                         </p>
-                        {wholesale > 0 && (
-                          <p className="text-[10px] text-slate-400">الدرزن {formatIQD(wholesale * 12)}</p>
+                        <p className={`text-sm font-extrabold tabular-nums ${wholesale ? 'text-brand-700' : 'text-amber-600'}`}>
+                          {wholesale ? formatIQD(byDozen(r) ? wholesale * 12 : wholesale) : 'عند الطلب'}
+                        </p>
+                        {wholesale > 0 && byDozen(r) && (
+                          <p className="text-[10px] text-slate-400">القطعة {formatIQD(wholesale)}</p>
                         )}
                       </div>
                     </div>

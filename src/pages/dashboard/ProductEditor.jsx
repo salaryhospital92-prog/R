@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import {
-  ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes,
+  ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes, Images, Search,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
 import { uploadProductImage, deleteProductImage } from '../../lib/image'
+import { googleImages } from '../../lib/search'
 import { useAuth } from '../../context/AuthContext'
 
 // html5-qrcode مكتبة ثقيلة (~400KB) — تُحمَّل عند فتح الماسح فقط
@@ -17,7 +18,8 @@ export default function ProductEditor() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const { isAdmin } = useAuth()
-  const fileInput = useRef(null)
+  const cameraInput = useRef(null)
+  const galleryInput = useRef(null)
 
   const [categories, setCategories] = useState([])
   const [form, setForm] = useState({
@@ -236,11 +238,33 @@ export default function ProductEditor() {
                 <ImageOff className="size-6 text-slate-400" />
               </span>
             )}
-            <input ref={fileInput} type="file" accept="image/*" capture="environment" onChange={pickImage} className="hidden" />
-            <button type="button" onClick={() => fileInput.current?.click()} className="flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold hover:bg-slate-200">
-              <Camera className="size-4" /> {form.image_url || preview ? 'تغيير الصورة' : 'التقاط / اختيار'}
-            </button>
+            {/* capture يفتح الكاميرا مباشرة، وبدونه يفتح المعرض وأي مصدر صور آخر */}
+            <input ref={cameraInput} type="file" accept="image/*" capture="environment" onChange={pickImage} className="hidden" />
+            <input ref={galleryInput} type="file" accept="image/*" onChange={pickImage} className="hidden" />
+            <div className="grid flex-1 grid-cols-2 gap-2">
+              <button type="button" onClick={() => cameraInput.current?.click()}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-bold hover:bg-slate-200">
+                <Camera className="size-4" /> كاميرا
+              </button>
+              <button type="button" onClick={() => galleryInput.current?.click()}
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-bold hover:bg-slate-200">
+                <Images className="size-4" /> المعرض
+              </button>
+            </div>
           </div>
+
+          {(form.name.trim() || form.barcode.trim()) && (
+            <a
+              href={googleImages(form.barcode.trim() || form.name.trim())}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100"
+            >
+              <Search className="size-4" /> ابحث عن صورة المنتج في جوجل
+            </a>
+          )}
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+            افتح البحث، احفظ الصورة المناسبة في جهازك، ثم اخترها من «المعرض».
+          </p>
         </div>
       </div>
 
