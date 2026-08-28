@@ -45,3 +45,24 @@ export async function uploadProductImage(file, productId) {
 /** يحذف صورة منتج — يُستدعى عند حذف المنتج حتى لا تبقى ملفات يتيمة */
 export const deleteProductImage = (productId) =>
   supabase.storage.from('product-images').remove([imagePath(productId)])
+
+/**
+ * يجلب صورة من رابط خارجي عبر وسيط الخادم (لتجاوز حجب CORS)،
+ * ثم تمرّ بنفس مسار التصغير والرفع — فلا تختلف عن صورة الكاميرا.
+ */
+export async function fetchImageFromUrl(url) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('انتهت الجلسة — سجّل الدخول من جديد')
+
+  const endpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/img-proxy?url=${encodeURIComponent(url)}`
+  const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${session.access_token}` } })
+
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({}))
+    throw new Error(error ?? 'تعذّر جلب الصورة من الرابط')
+  }
+
+  const blob = await res.blob()
+  if (!blob.type.startsWith('image/')) throw new Error('الرابط ليس صورة')
+  return new File([blob], 'from-url.jpg', { type: blob.type })
+}

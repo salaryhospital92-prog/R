@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes, Images, Search,
+  ScanSearch, Link as LinkIcon,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
-import { uploadProductImage, deleteProductImage } from '../../lib/image'
-import { googleImages } from '../../lib/search'
+import { uploadProductImage, deleteProductImage, fetchImageFromUrl } from '../../lib/image'
+import { googleImages, googleLens } from '../../lib/search'
 import { useAuth } from '../../context/AuthContext'
 
 // html5-qrcode مكتبة ثقيلة (~400KB) — تُحمَّل عند فتح الماسح فقط
@@ -35,6 +36,8 @@ export default function ProductEditor() {
   const [singles, setSingles] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [preview, setPreview] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+  const [fetching, setFetching] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [busy, setBusy] = useState(false)
@@ -82,6 +85,22 @@ export default function ProductEditor() {
     if (!file) return
     setImageFile(file)
     setPreview(URL.createObjectURL(file))
+  }
+
+  // إرفاق صورة من رابط خارجي — تُجلب عبر وسيط الخادم لتجاوز حجب CORS
+  const grabFromUrl = async () => {
+    setFetching(true)
+    setError('')
+    try {
+      const file = await fetchImageFromUrl(imageUrl.trim())
+      setImageFile(file)
+      setPreview(URL.createObjectURL(file))
+      setImageUrl('')
+    } catch (err) {
+      setError(err.message ?? 'تعذّر جلب الصورة')
+    } finally {
+      setFetching(false)
+    }
   }
 
   const save = async (e) => {
@@ -253,17 +272,45 @@ export default function ProductEditor() {
             </div>
           </div>
 
-          {(form.name.trim() || form.barcode.trim()) && (
-            <a
-              href={googleImages(form.barcode.trim() || form.name.trim())}
-              target="_blank" rel="noopener noreferrer"
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100"
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {form.image_url && (
+              <a
+                href={googleLens(form.image_url)}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-50 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
+              >
+                <ScanSearch className="size-4" /> عدسة جوجل — تعرّف على المنتج
+              </a>
+            )}
+            {(form.name.trim() || form.barcode.trim()) && (
+              <a
+                href={googleImages(form.barcode.trim() || form.name.trim())}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100"
+              >
+                <Search className="size-4" /> صور المنتج في جوجل
+              </a>
+            )}
+          </div>
+
+          {/* إرفاق صورة من رابط: تُجلب عبر الخادم ثم تُصغَّر كأي صورة أخرى */}
+          <div className="mt-2 flex gap-2">
+            <input
+              value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} dir="ltr"
+              placeholder="أو الصق رابط صورة هنا…"
+              className={field + ' text-start text-xs'}
+            />
+            <button
+              type="button" onClick={grabFromUrl} disabled={fetching || !imageUrl.trim()}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-40"
             >
-              <Search className="size-4" /> ابحث عن صورة المنتج في جوجل
-            </a>
-          )}
+              {fetching ? <Loader2 className="size-4 animate-spin" /> : <LinkIcon className="size-4" />} جلب
+            </button>
+          </div>
+
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
-            افتح البحث، احفظ الصورة المناسبة في جهازك، ثم اخترها من «المعرض».
+            صوّر المنتج واحفظه، ثم افتح <b>عدسة جوجل</b> لتتعرّف عليه وتريك صوره
+            الرسمية. انسخ رابط الصورة الأوضح والصقه هنا ليحلّ محلّ صورتك.
           </p>
         </div>
       </div>

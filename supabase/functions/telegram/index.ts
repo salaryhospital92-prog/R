@@ -552,8 +552,20 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
 
       if (st.step === 'photo') {
         if (input.pick === 'skip') return finishProduct(chat, d, agent, null)
+
+        // رابط صورة ملصوق (من نتائج جوجل أو عدسة جوجل) بدل إرسال صورة
+        if (!input.photo && /^https?:\/\//i.test(t)) {
+          await ask(chat, '⬇️ أجلب الصورة من الرابط…')
+          const bytes = await downloadUrl(t)
+          if (!bytes) {
+            return ask(chat, '❌ تعذّر جلب الصورة من هذا الرابط. جرّب رابطاً مباشراً للصورة، أو أرسلها كصورة.',
+              [googleRow(d.barcode || d.name || '', true), [['⏭ بلا صورة', 'pick:skip']], cancelRow()])
+          }
+          return finishProduct(chat, d, agent, null, bytes)
+        }
+
         if (!input.photo) {
-          return ask(chat, 'أرسل صورة المنتج — من الكاميرا أو المعرض — أو اضغط «بلا صورة».',
+          return ask(chat, 'أرسل صورة المنتج — من الكاميرا أو المعرض — أو الصق رابط صورة، أو اضغط «بلا صورة».',
             [googleRow(d.barcode || d.name || '', true), [['⏭ بلا صورة', 'pick:skip']], cancelRow()])
         }
         return finishProduct(chat, d, agent, input.photo)
@@ -841,7 +853,7 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
 }
 
 // ------------------------------------------------------------ إنهاءات
-async function finishProduct(chat: number, d: any, agent: Agent, photoId: string | null) {
+async function finishProduct(chat: number, d: any, agent: Agent, photoId: string | null, photoBytes?: Uint8Array) {
   const piece = d.sellBy === 'piece'
   const dozenQty = piece ? 0 : (d.dozenQty ?? 0)
   const pieceQty = d.pieceQty ?? 0
@@ -863,7 +875,8 @@ async function finishProduct(chat: number, d: any, agent: Agent, photoId: string
   }
 
   let imageUrl: string | null = null
-  if (photoId) imageUrl = await uploadPhoto(photoId, product.id)
+  if (photoBytes) imageUrl = await uploadBytes(photoBytes, product.id)
+  else if (photoId) imageUrl = await uploadPhoto(photoId, product.id)
   if (imageUrl) await db.from('products').update({ image_url: imageUrl }).eq('id', product.id)
 
   if (total > 0) {
@@ -1243,6 +1256,32 @@ async function downloadFile(fileId: string): Promise<Uint8Array | null> {
   } catch {
     return null
   }
+}
+
+/** ينزّل صورة من رابط خارجي — يرفض ما ليس صورة أو ما تجاوز 12 ميغابايت */
+async function downloadUrl(url: string): Promise<Uint8Array | null> {
+  try {
+    const u = new URL(url)
+    if (!['http:', 'https:'].includes(u.protocol)) return null
+    const res = await fetch(u.toString(), {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AlRifaiShop/1.0)', Accept: 'image/*' },
+    })
+    if (!res.ok) return null
+    if (!(res.headers.get('content-type') ?? '').startsWith('image/')) return null
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    return bytes.byteLength > 12 * 1024 * 1024 ? null : bytes
+  } catch {
+    return null
+  }
+}
+
+async function uploadBytes(bytes: Uint8Array, productId: string): Promise<string | null> {
+  const { error } = await db.storage.from('product-images')
+    .upload(`${productId}.jpg`, bytes, { contentType: 'image/jpeg', upsert: true, cacheControl: '31536000' })
+  if (error) return null
+  const { publicUrl } = db.storage.from('product-images').getPublicUrl(`${productId}.jpg`).data
+  return `${publicUrl}?v=${Date.now()}`
 }
 
 async function uploadPhoto(fileId: string, productId: string): Promise<string | null> {
