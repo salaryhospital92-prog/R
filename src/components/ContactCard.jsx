@@ -10,25 +10,26 @@ export default function ContactCard({ className = '', style }) {
       <ul className="grid gap-3 text-sm">
         <li className="flex items-start gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-50">
-            <MapPin className="size-4.5 text-brand-600" />
+            <MapPin className="size-4.5 text-brand-700" />
           </span>
-          <span className="pt-1.5 leading-relaxed text-slate-700">{STORE.address}</span>
+          <span className="pt-1.5 leading-relaxed text-ink-700">{STORE.address}</span>
         </li>
 
         <li className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-50">
-            <Phone className="size-4.5 text-brand-600" />
+            <Phone className="size-4.5 text-brand-700" />
           </span>
-          <a href={telUrl()} dir="ltr" className="font-bold tracking-wide text-slate-800 hover:text-brand-700">
+          <a href={telUrl()} dir="ltr"
+             className="tnum inline-flex min-h-11 items-center font-bold tracking-wide text-ink-800 hover:text-brand-800">
             {STORE.phone}
           </a>
         </li>
 
         <li className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-50">
-            <Clock className="size-4.5 text-brand-600" />
+            <Clock className="size-4.5 text-brand-700" />
           </span>
-          <span className="text-slate-700">{STORE.hours}</span>
+          <span className="text-ink-700">{STORE.hours}</span>
         </li>
       </ul>
 
@@ -36,13 +37,13 @@ export default function ContactCard({ className = '', style }) {
         <a
           href={contactWhatsappUrl()}
           target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3 text-sm font-bold text-white transition active:scale-95 hover:bg-brand-700"
+          className="flex items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3 text-sm font-bold text-white transition active:scale-95 hover:bg-brand-800"
         >
           <MessageCircle className="size-4.5" /> راسلنا واتساب
         </a>
         <a
           href={telUrl()}
-          className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 py-3 text-sm font-bold text-white transition active:scale-95 hover:bg-slate-800"
+          className="flex items-center justify-center gap-2 rounded-2xl bg-ink-900 py-3 text-sm font-bold text-white transition active:scale-95 hover:bg-ink-800"
         >
           <Phone className="size-4.5" /> اتصال
         </a>
@@ -58,7 +59,7 @@ export function FloatingWhatsapp({ bottom = 'bottom-5' }) {
       href={contactWhatsappUrl()}
       target="_blank" rel="noopener noreferrer"
       aria-label="تواصل معنا عبر واتساب"
-      className={`animate-pop fixed ${bottom} end-4 z-40 flex size-13 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 transition active:scale-90 hover:bg-brand-700`}
+      className={`animate-pop fixed ${bottom} end-4 z-40 flex size-13 items-center justify-center rounded-full bg-brand-700 text-white shadow-lg shadow-brand-600/30 transition active:scale-90 hover:bg-brand-800`}
     >
       <MessageCircle className="size-6" />
     </a>

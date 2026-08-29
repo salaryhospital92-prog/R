@@ -23,7 +23,7 @@ export default function Layout() {
 
   const link = ({ isActive }) =>
     `flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition ${
-      isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+      isActive ? 'bg-ink-900 text-white' : 'text-ink-600 hover:bg-ink-100'
     }`
 
   return (
@@ -34,8 +34,8 @@ export default function Layout() {
           <span className="truncate font-extrabold">أسواق الرفاعي</span>
 
           {/* الاسم يظهر على الشاشات الواسعة، والأيقونة وحدها على الجوال */}
-          <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold ring-1 ring-slate-900/5 sm:px-2.5">
-            {isAdmin ? <ShieldCheck className="size-3.5 text-brand-600" /> : <UserRound className="size-3.5 text-slate-500" />}
+          <span className="ms-auto flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2 py-1.5 text-[11px] font-bold ring-1 ring-ink-900/8 sm:px-2.5">
+            {isAdmin ? <ShieldCheck className="size-3.5 text-brand-700" /> : <UserRound className="size-3.5 text-ink-600" />}
             <span className="hidden sm:inline">{profile?.full_name || (isAdmin ? 'مدير' : 'مدخل بيانات')}</span>
           </span>
           {isAdmin && permission !== 'unsupported' && (
@@ -43,7 +43,7 @@ export default function Layout() {
               onClick={requestPermission}
               title={permission === 'granted' ? 'التنبيهات مفعّلة' : 'تفعيل تنبيه الطلبات الجديدة'}
               className={`rounded-xl p-2 transition ${
-                permission === 'granted' ? 'text-brand-600 hover:bg-brand-50' : 'text-slate-400 hover:bg-slate-100'
+                permission === 'granted' ? 'text-brand-700 hover:bg-brand-50' : 'text-ink-600 hover:bg-ink-100'
               }`}
               aria-label="تنبيهات الطلبات"
               style={{ padding: '0.375rem' }}
@@ -51,10 +51,10 @@ export default function Layout() {
               {permission === 'granted' ? <BellRing className="size-4.5" /> : <Bell className="size-4.5" />}
             </button>
           )}
-          <Link to="/" className="shrink-0 rounded-xl p-1.5 text-slate-500 hover:bg-slate-100 sm:p-2" aria-label="عرض المتجر">
+          <Link to="/" className="shrink-0 rounded-xl p-1.5 text-ink-600 hover:bg-ink-100 sm:p-2" aria-label="عرض المتجر">
             <Store className="size-4.5" />
           </Link>
-          <button onClick={signOut} className="shrink-0 rounded-xl p-1.5 text-red-600 hover:bg-red-50 sm:p-2" aria-label="خروج">
+          <button onClick={signOut} className="shrink-0 rounded-xl p-1.5 text-danger-700 hover:bg-red-50 sm:p-2" aria-label="خروج">
             <LogOut className="size-4.5" />
           </button>
         </div>
@@ -72,7 +72,7 @@ export default function Layout() {
       {lastOrder && (
         <button
           onClick={() => { dismiss(); navigate('/dashboard/orders') }}
-          className="animate-rise fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-md items-center gap-3 rounded-t-3xl bg-brand-600 p-4 text-start text-white shadow-2xl"
+          className="animate-rise fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-md items-center gap-3 rounded-t-3xl bg-brand-700 p-4 text-start text-white shadow-2xl"
         >
           <BellRing className="size-6 shrink-0" />
           <span className="min-w-0 flex-1">

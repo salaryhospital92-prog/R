@@ -16,11 +16,11 @@ export default function ModeSelect() {
   return (
     <main className="mx-auto min-h-dvh max-w-md px-5 pb-10 pt-10">
       <header className="animate-fade-up text-center">
-        <span className="mx-auto flex w-40 items-center justify-center rounded-3xl bg-white p-4 shadow-lg shadow-brand-600/15 ring-1 ring-slate-900/5">
+        <span className="mx-auto flex w-40 items-center justify-center rounded-3xl bg-white p-4 shadow-lg shadow-brand-600/15 ring-1 ring-ink-900/8">
           <img src={asset('logo.png')} alt="أسواق الرفاعي" className="w-full" />
         </span>
         <h1 className="mt-4 text-3xl font-extrabold tracking-tight">{STORE.name}</h1>
-        <p className="mt-1.5 text-sm text-slate-500">{STORE.addressShort}</p>
+        <p className="mt-1.5 text-sm text-ink-600">{STORE.addressShort}</p>
 
         <p className="mx-auto mt-4 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-brand-900 ring-1 ring-brand-600/15">
           <Sparkles className="size-3.5" />
@@ -28,7 +28,7 @@ export default function ModeSelect() {
         </p>
       </header>
 
-      <p className="animate-fade-up mt-9 text-center text-sm font-bold text-slate-500" style={{ animationDelay: '80ms' }}>
+      <p className="animate-fade-up mt-9 text-center text-sm font-bold text-ink-600" style={{ animationDelay: '80ms' }}>
         كيف تحب تتسوّق؟
       </p>
 
@@ -50,7 +50,7 @@ export default function ModeSelect() {
       {count > 0 && mode && (
         <button
           onClick={() => navigate(mode === 'wholesale' ? '/wholesale' : '/retail')}
-          className="animate-fade-up mt-3 w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98]"
+          className="animate-fade-up mt-3 w-full rounded-2xl bg-ink-900 py-3.5 text-sm font-bold text-white transition active:scale-[0.98]"
           style={{ animationDelay: '260ms' }}
         >
           متابعة سلّتك السابقة ({count} منتج)
@@ -61,13 +61,13 @@ export default function ModeSelect() {
 
       <Link
         to="/dashboard"
-        className="animate-fade-up mt-4 flex items-center justify-center gap-2 rounded-2xl bg-white/70 py-3 text-sm font-bold text-slate-600 ring-1 ring-slate-900/5 transition hover:bg-white hover:text-slate-900"
+        className="animate-fade-up mt-4 flex items-center justify-center gap-2 rounded-2xl bg-white/70 py-3 text-sm font-bold text-ink-600 ring-1 ring-ink-900/8 transition hover:bg-white hover:text-ink-900"
         style={{ animationDelay: '380ms' }}
       >
         <LogIn className="size-4" /> دخول الإدارة
       </Link>
 
-      <p className="mt-6 text-center text-xs text-slate-400">
+      <p className="mt-6 text-center text-xs text-ink-600">
         © {new Date().getFullYear()} {STORE.name}
       </p>
     </main>
@@ -86,9 +86,9 @@ function ModeButton({ onClick, icon, title, subtitle, tone, delay }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-lg font-extrabold">{title}</span>
-        <span className="block text-sm text-slate-500">{subtitle}</span>
+        <span className="block text-sm text-ink-600">{subtitle}</span>
       </span>
-      <ChevronLeft className="size-5 shrink-0 text-slate-300 transition group-hover:-translate-x-0.5 group-hover:text-slate-500" />
+      <ChevronLeft className="size-5 shrink-0 text-ink-200 transition group-hover:-translate-x-0.5 group-hover:text-ink-600" />
     </button>
   )
 }

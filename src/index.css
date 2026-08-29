@@ -1,14 +1,41 @@
 @import "tailwindcss";
 
+/* =====================================================================
+   نظام التصميم — أسواق الرفاعي
+   المصدر: logo.png. قياس البكسل أعطى عائلتين لا واحدة:
+     زمرّدي  #107060 → #109070  (نحو 72% من بكسلات الشعار)
+     حبر داكن #203040          (نحو 12% — لم يكن مستعملاً في الواجهة إطلاقاً)
+   الحبر صار لون البنية (الرؤوس والعناوين)، والزمرّدي حُصر في الفعل والسعر.
+   ===================================================================== */
+
 @theme {
   --font-sans: "Tajawal", system-ui, sans-serif;
 
+  /* الزمرّدي — مرجعي */
   --color-brand-50:  #ecfdf5;
   --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
   --color-brand-500: #10b981;
-  --color-brand-600: #059669;
-  --color-brand-700: #047857;
+  --color-brand-600: #059669;   /* أبيض عليه 3.77:1 — للأشكال لا للنص */
+  --color-brand-700: #047857;   /* أبيض عليه 5.48:1 — أدنى سطح آمن للنص */
+  --color-brand-800: #065f46;   /* أبيض عليه 7.68:1 */
   --color-brand-900: #064e3b;
+
+  /* حبر الشعار — لون البنية */
+  --color-ink-50:  #f4f6f8;
+  --color-ink-100: #e6eaef;
+  --color-ink-200: #cbd3dc;
+  --color-ink-400: #7b8a9c;
+  --color-ink-600: #3d4d60;
+  --color-ink-700: #2c3a4a;
+  --color-ink-800: #22303f;
+  --color-ink-900: #1e2a38;     /* أبيض عليه 14.6:1 */
+
+  /* حالات — كلها تعبر عتبة 4.5:1 على أبيض أو بأبيض عليها */
+  --color-warn-600: #b45309;    /* 5.02:1 — «السعر عند الطلب» */
+  --color-warn-50:  #fffbeb;
+  --color-alert-600: #c2410c;   /* كمية محدودة */
+  --color-danger-700: #b91c1c;
 
   --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop: pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -28,32 +55,61 @@
   to   { opacity: 1; transform: none; }
 }
 
-html, body {
-  overflow-x: hidden;
-}
+html, body { overflow-x: hidden; }
 
 body {
-  @apply font-sans text-slate-900 antialiased;
+  @apply font-sans text-ink-900 antialiased;
+  /* رفّ فاتح: تدرّج واحد هادئ بلون الحبر بدل تدرّجَين زخرفيَّين */
   background:
-    radial-gradient(60rem 40rem at 110% -10%, #d1fae5 0%, transparent 55%),
-    radial-gradient(50rem 35rem at -10% 5%, #e0f2fe 0%, transparent 50%),
-    #f8fafc;
-  background-attachment: fixed;
-  /* أمان الشاشات ذات الحواف المنحنية (iPhone) */
+    linear-gradient(180deg, #f7f9fa 0%, #eef2f5 100%) fixed,
+    #f7f9fa;
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ---------------------------------------------------------------------
+   ثلاث طبقات أسطح لا طبقة واحدة — كانت كل المناطق بطاقةً بيضاء متطابقة
+   --------------------------------------------------------------------- */
+
+/* 1) سطح أساسي: المحتوى الهادئ */
+@utility surface {
+  @apply rounded-2xl bg-white ring-1 ring-ink-900/6;
+}
+
+/* 2) سطح مرفوع: ما يُنقر أو يُقارن */
+@utility surface-raised {
+  @apply rounded-2xl bg-white ring-1 ring-ink-900/8 shadow-[0_1px_2px_rgb(30_42_56/0.04),0_8px_24px_-12px_rgb(30_42_56/0.16)];
+}
+
+/* 3) سطح حبري: الهوية والفعل الأساسي — توقيع النظام البصري */
+@utility surface-ink {
+  @apply bg-ink-900 text-white;
+}
+
+/* إبقاء الاسم القديم عاملاً حتى لا تنكسر شاشات لم تُهاجَر بعد */
 @utility card {
-  @apply rounded-3xl bg-white/90 ring-1 ring-slate-900/5 backdrop-blur-sm;
+  @apply surface-raised;
 }
 
 @utility glass {
-  @apply bg-white/75 backdrop-blur-xl ring-1 ring-slate-900/5;
+  @apply bg-white/85 backdrop-blur-xl ring-1 ring-ink-900/8;
 }
 
 /* شريط تمرير أنحف للأصناف الأفقية */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+
+/* ---------------------------------------------------------------------
+   تركيز مرئي موحّد — كانت الحقول تلغي الإطار (focus:outline-none)
+   وتكتفي بتغيير لون الحدود بنسبة 2.54:1، دون عتبة 3:1
+   --------------------------------------------------------------------- */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-brand-700);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* الأرقام في الأسعار والكميات تصطف عمودياً للمقارنة السريعة */
+.tnum { font-variant-numeric: tabular-nums; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

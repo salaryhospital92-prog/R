@@ -67,26 +67,26 @@ export default function Zones() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
+    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
   }
 
-  const input = 'rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm focus:border-brand-500 focus:outline-none'
+  const input = 'rounded-xl border border-ink-200 bg-white px-2.5 py-2 text-sm focus:border-brand-500 focus:outline-none'
   const count = Object.keys(dirty).length
 
   return (
     <div className="pb-24">
       <h1 className="mb-1 flex items-center gap-2 text-lg font-extrabold">
-        <Truck className="size-5 text-brand-600" /> مناطق التوصيل
+        <Truck className="size-5 text-brand-700" /> مناطق التوصيل
       </h1>
-      <p className="mb-4 text-xs text-slate-500">
+      <p className="mb-4 text-xs text-ink-600">
         الأجرة تُضاف لمجموع الطلب وتُقرأ من هنا — الزبون لا يستطيع تغييرها.
         أوقف منطقة بدل حذفها إن أردت إبقاءها في السجلات.
       </p>
 
-      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
 
       <div className="card mb-4 overflow-hidden">
-        <div className="grid grid-cols-[1fr_6rem_5rem_2.5rem] gap-2 border-b border-slate-100 px-3 py-2.5 text-[11px] font-bold text-slate-500">
+        <div className="grid grid-cols-[1fr_6rem_5rem_2.5rem] gap-2 border-b border-ink-100 px-3 py-2.5 text-[11px] font-bold text-ink-600">
           <span>المنطقة</span><span className="text-center">الأجرة (د.ع)</span><span className="text-center">مفعّلة</span><span />
         </div>
 
@@ -101,7 +101,7 @@ export default function Zones() {
                      onChange={(e) => edit(z.id, 'is_active', e.target.checked)}
                      className="size-5 accent-emerald-600" />
             </label>
-            <button onClick={() => remove(z)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="حذف">
+            <button onClick={() => remove(z)} className="rounded-lg p-2 text-danger-700 hover:bg-red-50" aria-label="حذف">
               <Trash2 className="size-4" />
             </button>
           </div>
@@ -117,7 +117,7 @@ export default function Zones() {
                  onChange={(e) => setNewZone({ ...newZone, fee: e.target.value.replace(/\D/g, '') })}
                  placeholder="الأجرة" className={input + ' w-28 text-center'} />
           <button onClick={add} disabled={busy}
-                  className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+                  className="flex items-center gap-1.5 rounded-xl bg-ink-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
             <Plus className="size-4" /> إضافة
           </button>
         </div>
@@ -128,7 +128,7 @@ export default function Zones() {
       {(count > 0 || saved) && (
         <div className="glass fixed inset-x-0 bottom-0 z-30 p-3">
           <button onClick={save} disabled={busy || count === 0}
-                  className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 font-bold text-white disabled:opacity-60">
+                  className="mx-auto flex w-full max-w-md items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 font-bold text-white disabled:opacity-60">
             {busy ? <Loader2 className="size-5 animate-spin" />
               : saved && count === 0 ? <Check className="size-5" /> : <Save className="size-5" />}
             {saved && count === 0 ? 'تم الحفظ' : `حفظ ${count} منطقة`}
@@ -163,14 +163,14 @@ function TelegramSettings() {
     setBusy(false)
   }
 
-  const input = 'w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm focus:border-brand-500 focus:outline-none'
+  const input = 'w-full rounded-xl border border-ink-200 bg-white px-2.5 py-2 text-sm focus:border-brand-500 focus:outline-none'
 
   return (
     <section className="card mt-4 p-4">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-extrabold">
-        <Send className="size-4 text-brand-600" /> إشعار التيليغرام عند كل طلب
+        <Send className="size-4 text-brand-700" /> إشعار التيليغرام عند كل طلب
       </h2>
-      <p className="mb-3 text-xs leading-relaxed text-slate-500">
+      <p className="mb-3 text-xs leading-relaxed text-ink-600">
         1) افتح <span className="font-bold" dir="ltr">@BotFather</span> في تيليغرام واكتب <span dir="ltr">/newbot</span> وانسخ التوكن.
         <br />
         2) أرسل رسالة لبوتك، ثم افتح <span className="font-bold" dir="ltr">@userinfobot</span> لتعرف معرّف محادثتك.
@@ -179,13 +179,13 @@ function TelegramSettings() {
       </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs font-bold text-slate-600">
+        <label className="text-xs font-bold text-ink-600">
           توكن البوت
           <input dir="ltr" type="password" value={values.telegram_bot_token}
                  onChange={(e) => setValues({ ...values, telegram_bot_token: e.target.value })}
                  placeholder="123456:ABC-DEF…" className={input + ' mt-1 text-start'} />
         </label>
-        <label className="text-xs font-bold text-slate-600">
+        <label className="text-xs font-bold text-ink-600">
           معرّف المحادثة
           <input dir="ltr" value={values.telegram_chat_id}
                  onChange={(e) => setValues({ ...values, telegram_chat_id: e.target.value })}
@@ -194,11 +194,11 @@ function TelegramSettings() {
       </div>
 
       <button onClick={save} disabled={busy}
-              className="mt-3 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+              className="mt-3 flex items-center gap-2 rounded-xl bg-ink-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} حفظ الإعدادات
       </button>
 
-      {msg && <p className="mt-2 text-xs text-slate-600">{msg}</p>}
+      {msg && <p className="mt-2 text-xs text-ink-600">{msg}</p>}
     </section>
   )
 }

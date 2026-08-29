@@ -53,112 +53,145 @@ export default function Catalog({ mode }) {
   }, 0)
 
   const isWholesale = mode === 'wholesale'
-  const accent = isWholesale
-    ? 'from-amber-500 to-orange-600'
-    : 'from-brand-500 to-brand-700'
+  // وضع البيع يُميَّز بشريط لوني رفيع لا بصبغ الرأس كله — الأخضر محجوز للفعل
+  const modeRule = isWholesale ? 'bg-amber-400' : 'bg-brand-500'
 
   return (
     <div className="min-h-dvh pb-28">
       <header className="sticky top-0 z-30">
-        <div className={`bg-gradient-to-l ${accent} text-white`}>
+        {/* شريط الحبر: توقيع النظام، ولونه مأخوذ من الشعار نفسه (#1E2A38) */}
+        <div className="surface-ink">
           <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pb-3 pt-4">
-            <Link to="/" className="rounded-xl p-1.5 transition hover:bg-white/15" aria-label="رجوع">
+            <Link to="/" className="rounded-xl p-1.5 transition hover:bg-white/10" aria-label="رجوع للصفحة الأولى">
               <ChevronRight className="size-5" />
             </Link>
-            <img src={asset('icon-192.png')} alt="" className="size-9 rounded-xl ring-2 ring-white/25" />
+            <img src={asset('logo-mark.png')} alt="" className="size-9" />
             <div className="min-w-0">
-              <p className="font-extrabold leading-tight">{STORE.name}</p>
-              <p className="text-[11px] text-white/85">
-                {isWholesale ? 'أسعار الجملة — بالدرزن' : 'أسعار المفرد — بالقطعة'}
-              </p>
+              <p className="text-[15px] font-extrabold leading-tight">{STORE.name}</p>
+              <p className="text-[11px] text-white/70">{STORE.addressShort}</p>
             </div>
             <Link
               to={isWholesale ? '/retail' : '/wholesale'}
-              className="ms-auto shrink-0 rounded-full bg-white/20 px-3 py-1.5 text-[11px] font-bold backdrop-blur-sm transition hover:bg-white/30"
+              className="ms-auto shrink-0 rounded-full bg-white/12 px-3 py-2 text-[12px] font-bold ring-1 ring-white/20 transition hover:bg-white/20"
             >
               {isWholesale ? 'تحويل للمفرد' : 'تحويل للجملة'}
             </Link>
           </div>
 
           <div className="mx-auto max-w-3xl px-4 pb-4">
+            <label className="sr-only" htmlFor="product-search">ابحث عن منتج</label>
             <div className="relative">
-              <Search className="pointer-events-none absolute inset-y-0 start-3.5 my-auto size-4 text-slate-400" />
+              <Search className="pointer-events-none absolute inset-y-0 start-3.5 my-auto size-4 text-ink-400" />
               <input
+                id="product-search" type="search"
                 value={query} onChange={(e) => setQuery(e.target.value)}
                 placeholder="ابحث عن منتج…"
-                className="w-full rounded-2xl bg-white py-3 pe-10 ps-10 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400"
+                className="w-full rounded-xl bg-white py-3 pe-10 ps-10 text-sm text-ink-900 outline-none placeholder:text-ink-400"
               />
               {query && (
-                <button onClick={() => setQuery('')} className="absolute inset-y-0 end-3 my-auto text-slate-400" aria-label="مسح">
+                <button onClick={() => setQuery('')} className="absolute inset-y-0 end-2 my-auto rounded-lg p-1.5 text-ink-400 hover:text-ink-700" aria-label="مسح البحث">
                   <X className="size-4" />
                 </button>
               )}
             </div>
           </div>
+
+          {/* الشريط اللوني يفصل الحبر عن الرفّ ويحمل رمز وضع البيع */}
+          <div className={`h-1 ${modeRule}`} />
         </div>
 
-        <div className="glass">
+        <nav aria-label="أصناف المنتجات" className="glass">
           <div className="no-scrollbar mx-auto flex max-w-3xl gap-2 overflow-x-auto px-4 py-2.5">
-            {[{ id: '', name: 'الكل' }, ...categories].map((c) => (
-              <button
-                key={c.id || 'all'}
-                onClick={() => setCategoryId(String(c.id))}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold transition ${
-                  String(c.id) === categoryId
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-600 ring-1 ring-slate-900/5 hover:bg-slate-50'
-                }`}
-              >
-                {c.name}
-              </button>
-            ))}
+            {[{ id: '', name: 'الكل' }, ...categories].map((c) => {
+              const active = String(c.id) === categoryId
+              return (
+                <button
+                  key={c.id || 'all'} type="button"
+                  onClick={() => setCategoryId(String(c.id))}
+                  aria-pressed={active}
+                  className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] font-bold transition ${
+                    active
+                      ? 'bg-ink-900 text-white'
+                      : 'bg-white text-ink-600 ring-1 ring-ink-900/8 hover:bg-ink-50'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              )
+            })}
           </div>
-        </div>
+        </nav>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 pt-4">
-        {error && <p className="rounded-2xl bg-red-50 p-4 text-sm text-red-700 ring-1 ring-red-600/10">{error}</p>}
+      <main className="mx-auto max-w-3xl px-4 pt-5">
+        {/* عنوان الصفحة: كان المعروض بلا h1 وبلا أي حجم فوق 16px */}
+        <div className="mb-4 flex items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-extrabold leading-tight tracking-tight">
+              {isWholesale ? 'أسعار الجملة' : 'أسعار المفرد'}
+            </h1>
+            <p className="mt-0.5 text-[13px] text-ink-600">
+              {isWholesale ? 'بالدرزن — أسعار أقل للكميات' : 'بالقطعة — للاستعمال الشخصي'}
+            </p>
+          </div>
+          {!loading && shown.length > 0 && (
+            <p className="tnum shrink-0 pb-1 text-[13px] font-bold text-ink-600">
+              {formatNumber(shown.length)} منتج
+            </p>
+          )}
+        </div>
+
+        <div aria-live="polite" className="sr-only">
+          {loading ? 'جارٍ تحميل المنتجات' : `${shown.length} منتج معروض`}
+        </div>
+
+        {error && (
+          <p role="alert" className="surface mb-4 border-s-4 border-danger-700 p-4 text-sm text-danger-700">{error}</p>
+        )}
 
         {loading ? (
-          <div className="flex justify-center py-24"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
+          <div className="flex justify-center py-24"><Loader2 className="size-8 animate-spin text-brand-700" /></div>
         ) : products.length === 0 ? (
           // متجر بلا بضاعة بعد — رسالة مطمئنة بدل «لا نتائج» الجافة
-          <div className="animate-fade-up card p-8 text-center">
-            <img src={asset('logo-mark.png')} alt="" className="mx-auto mb-3 size-16 opacity-90" />
+          <div className="animate-fade-up surface-raised p-8 text-center">
+            <img src={asset('logo-mark.png')} alt="" className="mx-auto mb-3 size-16" />
             <p className="text-lg font-extrabold">البضاعة تُضاف الآن</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+            <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-ink-600">
               نجهّز المعروض ونصوّره منتجاً منتجاً. تواصل معنا وأخبرنا بما تريد
               ونوفّره لك حالاً.
             </p>
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <a href={contactWhatsappUrl()} target="_blank" rel="noopener noreferrer"
-                 className="rounded-2xl bg-brand-600 py-3 text-sm font-bold text-white">راسلنا واتساب</a>
-              <a href={telUrl()} className="rounded-2xl bg-slate-900 py-3 text-sm font-bold text-white">اتصل بنا</a>
+                 className="rounded-xl bg-brand-700 py-3 text-sm font-bold text-white hover:bg-brand-800">راسلنا واتساب</a>
+              <a href={telUrl()} className="rounded-xl bg-ink-900 py-3 text-sm font-bold text-white hover:bg-ink-800">اتصل بنا</a>
             </div>
           </div>
         ) : shown.length === 0 ? (
-          <div className="animate-fade-up card p-12 text-center text-slate-500">
-            <PackageSearch className="mx-auto mb-3 size-10 text-slate-300" />
+          <div className="animate-fade-up surface p-12 text-center text-ink-600">
+            <PackageSearch className="mx-auto mb-3 size-10 text-ink-200" />
             لا توجد منتجات مطابقة لبحثك.
+            <button onClick={() => { setQuery(''); setCategoryId('') }}
+                    className="mt-4 block w-full rounded-xl bg-ink-900 py-2.5 text-sm font-bold text-white sm:mx-auto sm:w-auto sm:px-6">
+              إظهار كل المنتجات
+            </button>
           </div>
         ) : (
-          <>
-            <p className="mb-3 text-xs font-semibold text-slate-400">{formatNumber(shown.length)} منتج</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {shown.map((p, i) => (
-                <ProductCard
-                  key={p.id} product={p} mode={mode} index={i}
-                  qty={cart.items[p.id] ?? 0}
-                  onChange={(q) => cart.setQty(p.id, q)}
-                />
-              ))}
-            </div>
-          </>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {shown.map((p, i) => (
+              <ProductCard
+                key={p.id} product={p} mode={mode} index={i}
+                qty={cart.items[p.id] ?? 0}
+                onChange={(q) => cart.setQty(p.id, q)}
+              />
+            ))}
+          </div>
         )}
-
-        <ContactCard className="mt-8" />
-        <p className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} {STORE.name}</p>
       </main>
+
+      <footer className="mx-auto mt-10 max-w-3xl px-4">
+        <ContactCard />
+        <p className="py-6 text-center text-xs text-ink-600">© {new Date().getFullYear()} {STORE.name}</p>
+      </footer>
 
       {cart.count === 0 && <FloatingWhatsapp />}
 
@@ -167,21 +200,21 @@ export default function Catalog({ mode }) {
         <div className="fixed inset-x-0 bottom-0 z-40 p-3">
           <button
             onClick={() => navigate('/checkout')}
-            className="animate-rise mx-auto flex w-full max-w-md items-center gap-3 rounded-3xl bg-slate-900 p-3 text-white shadow-2xl shadow-slate-900/25 transition active:scale-[0.98]"
+            className="animate-rise mx-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-ink-900 p-3 text-white shadow-[0_12px_32px_-8px_rgb(30_42_56/0.45)] transition active:scale-[0.98]"
           >
-            <span className="relative flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/10">
+            <span className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
               <ShoppingCart className="size-5" />
-              <span className="absolute -top-1 -end-1 flex size-5 items-center justify-center rounded-full bg-brand-500 text-[10px] font-extrabold ring-2 ring-slate-900">
+              <span className="tnum absolute -top-1 -end-1 flex size-5 items-center justify-center rounded-full bg-brand-500 text-[10px] font-extrabold text-ink-900 ring-2 ring-ink-900">
                 {formatNumber(cart.count)}
               </span>
             </span>
             <span className="min-w-0 text-start">
-              <span className="block text-[11px] text-white/60">
+              <span className="block text-[11px] text-white/75">
                 {formatNumber(cart.units)} قطعة
               </span>
-              <span className="block font-extrabold tracking-tight">{formatIQD(subtotal)}</span>
+              <span className="tnum block text-[17px] font-extrabold tracking-tight">{formatIQD(subtotal)}</span>
             </span>
-            <span className="ms-auto shrink-0 rounded-2xl bg-brand-600 px-4 py-2.5 text-sm font-bold">
+            <span className="ms-auto shrink-0 rounded-xl bg-brand-700 px-4 py-2.5 text-sm font-bold">
               إتمام الطلب
             </span>
           </button>

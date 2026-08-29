@@ -71,34 +71,34 @@ export default function Prices() {
   const shown = rows.filter((r) => !query.trim() || r.name.includes(query.trim()))
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
+    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
   }
 
-  const field = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center text-sm font-bold tabular-nums focus:border-brand-500 focus:outline-none'
+  const field = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-center text-sm font-bold tabular-nums focus:border-brand-500 focus:outline-none'
 
   return (
     <div>
       <h1 className="mb-1 flex items-center gap-2 text-lg font-extrabold">
-        <Tags className="size-5 text-brand-600" /> الأسعار
+        <Tags className="size-5 text-brand-700" /> الأسعار
       </h1>
-      <p className="mb-4 text-xs leading-relaxed text-slate-500">
+      <p className="mb-4 text-xs leading-relaxed text-ink-600">
         <b>سعر الدرزن</b> = ثمن 12 قطعة. النظام يقسّمه على 12 ليحسب سعر القطعة
         بالجملة. والبضاعة التي تُباع بالقطعة فقط يُدخل سعر جملتها للقطعة مباشرةً.
         اترك السعر 0 ليظهر المنتج في المتجر بـ«السعر عند الطلب».
       </p>
 
       <div className="relative mb-4">
-        <Search className="pointer-events-none absolute inset-y-0 start-3.5 my-auto size-4 text-slate-400" />
+        <Search className="pointer-events-none absolute inset-y-0 start-3.5 my-auto size-4 text-ink-600" />
         <input
           value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث بالاسم…"
-          className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pe-3 ps-10 text-sm focus:border-brand-500 focus:outline-none"
+          className="w-full rounded-2xl border border-ink-200 bg-white py-2.5 pe-3 ps-10 text-sm focus:border-brand-500 focus:outline-none"
         />
       </div>
 
-      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
 
       {shown.length === 0 ? (
-        <p className="card p-10 text-center text-sm text-slate-500">لا نتائج.</p>
+        <p className="card p-10 text-center text-sm text-ink-600">لا نتائج.</p>
       ) : (
         <ul className="grid gap-2.5 sm:grid-cols-2">
           {shown.map((r) => {
@@ -111,7 +111,7 @@ export default function Prices() {
                 <div className="mb-3 flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold leading-snug">{r.name}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-400">{r.categories?.name ?? '—'}</p>
+                    <p className="mt-0.5 text-[11px] text-ink-600">{r.categories?.name ?? '—'}</p>
                   </div>
                   {savedId === r.id && (
                     <span className="animate-pop flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-700">
@@ -124,7 +124,7 @@ export default function Prices() {
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
-                        <span className="mb-1 block text-[11px] font-bold text-slate-500">سعر المفرد</span>
+                        <span className="mb-1 block text-[11px] font-bold text-ink-600">سعر المفرد</span>
                         <input
                           autoFocus inputMode="numeric" value={draft.retail}
                           onChange={(e) => setDraft({ ...draft, retail: e.target.value.replace(/\D/g, '') })}
@@ -132,7 +132,7 @@ export default function Prices() {
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[11px] font-bold text-slate-500">
+                        <span className="mb-1 block text-[11px] font-bold text-ink-600">
                           {byDozen(r) ? 'سعر الدرزن (12 قطعة)' : 'الجملة — للقطعة'}
                         </span>
                         <input
@@ -144,21 +144,21 @@ export default function Prices() {
                     </div>
 
                     {byDozen(r) && (
-                      <p className="mt-2 text-center text-[11px] text-slate-500">
-                        القطعة بالجملة = <b className="text-slate-700">{formatIQD(Math.round((Number(draft.wholesale) || 0) / 12))}</b>
+                      <p className="mt-2 text-center text-[11px] text-ink-600">
+                        القطعة بالجملة = <b className="text-ink-700">{formatIQD(Math.round((Number(draft.wholesale) || 0) / 12))}</b>
                       </p>
                     )}
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button
                         onClick={() => save(r)} disabled={busy}
-                        className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-bold text-white transition active:scale-95 hover:bg-brand-700 disabled:opacity-60"
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-brand-700 py-2.5 text-sm font-bold text-white transition active:scale-95 hover:bg-brand-800 disabled:opacity-60"
                       >
                         {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} حفظ
                       </button>
                       <button
                         onClick={cancel} disabled={busy}
-                        className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 py-2.5 text-sm font-bold text-slate-700 transition active:scale-95 hover:bg-slate-200"
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-ink-100 py-2.5 text-sm font-bold text-ink-700 transition active:scale-95 hover:bg-ink-200"
                       >
                         <X className="size-4" /> إلغاء
                       </button>
@@ -167,28 +167,28 @@ export default function Prices() {
                 ) : (
                   <>
                     <div className="grid grid-cols-2 gap-2 text-center">
-                      <div className="rounded-xl bg-slate-50 p-2.5">
-                        <p className="text-[11px] text-slate-500">المفرد</p>
-                        <p className={`text-sm font-extrabold tabular-nums ${retail ? 'text-brand-700' : 'text-amber-600'}`}>
+                      <div className="rounded-xl bg-ink-50 p-2.5">
+                        <p className="text-[11px] text-ink-600">المفرد</p>
+                        <p className={`text-sm font-extrabold tabular-nums ${retail ? 'text-brand-700' : 'text-warn-600'}`}>
                           {retail ? formatIQD(retail) : 'عند الطلب'}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-slate-50 p-2.5">
-                        <p className="text-[11px] text-slate-500">
+                      <div className="rounded-xl bg-ink-50 p-2.5">
+                        <p className="text-[11px] text-ink-600">
                           {byDozen(r) ? 'سعر الدرزن' : 'الجملة — للقطعة'}
                         </p>
-                        <p className={`text-sm font-extrabold tabular-nums ${wholesale ? 'text-brand-700' : 'text-amber-600'}`}>
+                        <p className={`text-sm font-extrabold tabular-nums ${wholesale ? 'text-brand-700' : 'text-warn-600'}`}>
                           {wholesale ? formatIQD(byDozen(r) ? wholesale * 12 : wholesale) : 'عند الطلب'}
                         </p>
                         {wholesale > 0 && byDozen(r) && (
-                          <p className="text-[10px] text-slate-400">القطعة {formatIQD(wholesale)}</p>
+                          <p className="text-[10px] text-ink-600">القطعة {formatIQD(wholesale)}</p>
                         )}
                       </div>
                     </div>
 
                     <button
                       onClick={() => startEdit(r)}
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 py-2.5 text-sm font-bold text-white transition active:scale-95 hover:bg-slate-800"
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-ink-900 py-2.5 text-sm font-bold text-white transition active:scale-95 hover:bg-ink-800"
                     >
                       <Pencil className="size-4" /> تعديل
                     </button>

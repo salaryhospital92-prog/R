@@ -82,34 +82,34 @@ export default function Checkout() {
   if (result) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-5 text-center">
-        <CheckCircle2 className="animate-pop mx-auto size-16 text-brand-600" />
+        <CheckCircle2 className="animate-pop mx-auto size-16 text-brand-700" />
         <div className="animate-fade-up">
           <h1 className="text-xl font-bold">تم استلام طلبك</h1>
-          <p className="mt-1 text-slate-600">رقم الطلب</p>
+          <p className="mt-1 text-ink-600">رقم الطلب</p>
           <p className="text-3xl font-bold text-brand-700">#{result.order_number}</p>
         </div>
 
         <div className="animate-fade-up card p-4 text-start text-sm" style={{ animationDelay: '80ms' }}>
           <Row label="مجموع البضاعة" value={formatIQD(result.subtotal)} />
           <Row label={`التوصيل — ${result.delivery_zone}`} value={formatIQD(result.delivery_fee)} />
-          <div className="mt-2 border-t border-slate-200 pt-2">
+          <div className="mt-2 border-t border-ink-200 pt-2">
             <Row label="المجموع الكلي" value={formatIQD(result.total_amount)} bold />
           </div>
         </div>
 
-        <p className="animate-fade-up text-sm text-slate-600" style={{ animationDelay: '140ms' }}>
+        <p className="animate-fade-up text-sm text-ink-600" style={{ animationDelay: '140ms' }}>
           أرسل الطلب عبر واتساب ليصل المتجر ويتواصلوا معك.
         </p>
 
         <a
           href={whatsappUrl(buildOrderMessage(result))}
-          className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 font-bold text-white active:scale-95"
+          className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_24px_-10px_rgb(4_120_87/0.6)] active:scale-95"
           style={{ animationDelay: '200ms' }}
         >
           <MessageCircle className="size-5" /> إرسال الطلب عبر واتساب
         </a>
 
-        <Link to="/" className="text-sm font-semibold text-slate-500">العودة للمتجر</Link>
+        <Link to="/" className="text-sm font-semibold text-ink-600">العودة للمتجر</Link>
         <ContactCard className="mt-2 text-start" />
       </main>
     )
@@ -119,32 +119,32 @@ export default function Checkout() {
   if (!loading && ids.length === 0) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 p-5 text-center">
-        <p className="text-slate-500">سلّتك فارغة.</p>
-        <Link to={backTo} className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white">تصفّح المنتجات</Link>
+        <p className="text-ink-600">سلّتك فارغة.</p>
+        <Link to={backTo} className="rounded-xl bg-brand-700 px-5 py-2.5 font-semibold text-white">تصفّح المنتجات</Link>
       </main>
     )
   }
 
   if (loading) {
-    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
+    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-700" /></div>
   }
 
-  const field = 'w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none'
+  const field = 'w-full rounded-2xl border border-ink-200 bg-white px-3.5 py-3 text-sm shadow-sm focus:border-brand-500 focus:outline-none'
   const label = 'block text-sm font-semibold mb-1'
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-md pb-28">
+    <form onSubmit={submit} className="mx-auto max-w-md pb-28" id="checkout-form">
       <header className="glass sticky top-0 z-20 flex items-center gap-2 p-3">
-        <button type="button" onClick={() => navigate(backTo)} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="رجوع">
+        <button type="button" onClick={() => navigate(backTo)} className="rounded-lg p-1.5 hover:bg-ink-100" aria-label="رجوع">
           <ArrowRight className="size-5" />
         </button>
         <h1 className="font-bold">سلّة المشتريات</h1>
-        <span className="ms-auto rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold">
+        <span className="ms-auto rounded-lg bg-ink-100 px-2.5 py-1 text-xs font-semibold">
           {isWholesale ? 'جملة' : 'مفرد'}
         </span>
       </header>
 
-      <div className="grid gap-2 p-3">
+      <main className="grid gap-2 p-3">
         {products.map((p) => {
           const qty = cart.items[p.id] ?? 0
           const price = priceOf(p)
@@ -157,18 +157,18 @@ export default function Checkout() {
                 {p.image_url ? (
                   <img src={p.image_url} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
                 ) : (
-                  <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-slate-100"><ImageOff className="size-5 text-slate-400" /></span>
+                  <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-ink-100"><ImageOff className="size-5 text-ink-600" /></span>
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-ink-600">
                     {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} للقطعة`}
                   </p>
                   <p className="text-sm font-extrabold text-brand-700">
                     {price === 0 ? '—' : formatIQD(price * qty)}
                   </p>
                 </div>
-                <button type="button" onClick={() => cart.setQty(p.id, 0)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label="حذف">
+                <button type="button" onClick={() => cart.setQty(p.id, 0)} className="rounded-lg p-2 text-danger-700 hover:bg-red-50" aria-label="حذف">
                   <Trash2 className="size-4" />
                 </button>
               </div>
@@ -200,31 +200,32 @@ export default function Checkout() {
                     const n = Math.max(0, Math.min(Number(e.target.value) || 0, maxQty / step))
                     cart.setQty(p.id, n * step)
                   }}
-                  className="w-20 rounded-2xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm font-bold focus:border-brand-500 focus:outline-none"
+                  className="w-20 rounded-2xl border border-ink-200 bg-white px-2 py-2.5 text-center text-sm font-bold focus:border-brand-500 focus:outline-none"
                   aria-label={byDozen ? 'عدد الدرزن' : 'عدد القطع'}
                 />
               </div>
               {qty >= maxQty && (
-                <p className="mt-1.5 text-[11px] text-amber-600">
+                <p className="mt-1.5 text-[11px] text-warn-600">
                   هذه أقصى كمية متوفرة حالياً ({formatNumber(p.quantity_single)} قطعة).
                 </p>
               )}
             </div>
           )
         })}
-      </div>
+      </main>
 
       <div className="grid gap-3 p-3">
         <div>
           <label className={label} htmlFor="name">الاسم الكامل *</label>
-          <input id="name" required minLength={2} value={form.name}
+          <input id="name" required minLength={2} value={form.name} autoComplete="name"
                  onChange={(e) => setForm({ ...form, name: e.target.value })} className={field} />
         </div>
         <div>
           <label className={label} htmlFor="phone">رقم الهاتف *</label>
           <input id="phone" required type="tel" inputMode="tel" dir="ltr" placeholder="07XXXXXXXXX"
-                 value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                 className={field + ' text-start'} />
+                 autoComplete="tel" value={form.phone}
+                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                 className={field + ' text-start tnum'} />
         </div>
         <div>
           <label className={label} htmlFor="zone">منطقة التوصيل *</label>
@@ -240,7 +241,8 @@ export default function Checkout() {
         </div>
         <div>
           <label className={label} htmlFor="note">أقرب نقطة دالة (اختياري)</label>
-          <input id="note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })}
+          <input id="note" value={form.note} autoComplete="address-line1"
+                 onChange={(e) => setForm({ ...form, note: e.target.value })}
                  placeholder="مثال: قرب جامع الرحمن" className={field} />
         </div>
       </div>
@@ -251,24 +253,28 @@ export default function Checkout() {
           label={<span className="flex items-center gap-1"><Truck className="size-4" /> التوصيل</span>}
           value={zone ? (zone.fee > 0 ? formatIQD(zone.fee) : 'مجاناً') : '— اختر المنطقة'}
         />
-        <div className="mt-2 border-t border-slate-200 pt-2">
+        <div className="mt-2 border-t border-ink-200 pt-2">
           <Row label="المجموع الكلي" value={formatIQD(total)} bold />
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-600">
           المبالغ النهائية تُحسب في المتجر عند الحفظ، وتظهر في رسالة الواتساب.
         </p>
       </div>
 
       {!storePhoneConfigured && (
-        <p className="mx-3 mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+        <p className="mx-3 mt-3 rounded-xl bg-amber-50 p-3 text-sm text-warn-600">
           رقم واتساب المتجر غير مضبوط — أضف VITE_STORE_WHATSAPP في ملف .env.
         </p>
       )}
-      {error && <p className="mx-3 mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && (
+        <p role="alert" className="surface mx-3 mt-3 border-s-4 border-danger-700 p-3 text-sm font-semibold text-danger-700">
+          {error}
+        </p>
+      )}
 
       <div className="glass fixed inset-x-0 bottom-0 mx-auto max-w-md p-3">
         <button type="submit" disabled={busy}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 py-3.5 font-bold text-white active:scale-95 disabled:opacity-60">
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 font-bold text-white active:scale-95 disabled:opacity-60">
           {busy ? <Loader2 className="size-5 animate-spin" /> : <MessageCircle className="size-5" />}
           إرسال الطلب عبر واتساب
         </button>
@@ -279,9 +285,9 @@ export default function Checkout() {
 
 function Row({ label, value, bold }) {
   return (
-    <div className={`flex items-center justify-between py-1 ${bold ? 'text-base font-bold' : 'text-slate-600'}`}>
+    <div className={`flex items-center justify-between py-1 ${bold ? 'text-base font-bold' : 'text-ink-600'}`}>
       <span>{label}</span>
-      <span className={bold ? 'text-brand-700' : 'font-semibold text-slate-800'}>{value}</span>
+      <span className={bold ? 'text-brand-700' : 'font-semibold text-ink-800'}>{value}</span>
     </div>
   )
 }

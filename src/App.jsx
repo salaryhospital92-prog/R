@@ -24,19 +24,19 @@ function ProtectedRoute({ children, adminOnly = false }) {
   // العجلة تظهر فقط لمن لديه جلسة محفوظة يجري التحقق منها.
   if (loading) {
     if (!hasStoredSession()) return <Login />
-    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-600" /></div>
+    return <div className="flex min-h-dvh items-center justify-center"><Loader2 className="size-8 animate-spin text-brand-700" /></div>
   }
   if (!session) return <Navigate to="/dashboard/login" replace />
   if (!profile) {
     return (
-      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-slate-600">
+      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-ink-600">
         حسابك غير مرتبط بملف موظف. راجع المدير.
       </div>
     )
   }
   if (adminOnly && !isAdmin) {
     return (
-      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-slate-600">
+      <div className="flex min-h-dvh items-center justify-center p-6 text-center text-ink-600">
         هذه الصفحة للمدير فقط.
       </div>
     )

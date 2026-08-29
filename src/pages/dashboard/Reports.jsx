@@ -35,7 +35,7 @@ export default function Reports() {
   }, [])
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
+    return <div className="flex justify-center py-20"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
   }
 
   const days = PERIODS.find((p) => p.k === period).days
@@ -60,7 +60,7 @@ export default function Reports() {
   return (
     <div>
       <h1 className="mb-3 flex items-center gap-2 text-lg font-extrabold">
-        <TrendingUp className="size-5 text-brand-600" /> التقارير
+        <TrendingUp className="size-5 text-brand-700" /> التقارير
       </h1>
 
       <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto">
@@ -68,7 +68,7 @@ export default function Reports() {
           <button
             key={p.k} onClick={() => setPeriod(p.k)}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold transition ${
-              period === p.k ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-900/5'
+              period === p.k ? 'bg-ink-900 text-white' : 'bg-white text-ink-600 ring-1 ring-ink-900/8'
             }`}
           >
             {p.l}
@@ -76,13 +76,13 @@ export default function Reports() {
         ))}
       </div>
 
-      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat icon={<Wallet className="size-4" />} label="مبيعات البضاعة" value={formatIQD(revenue)} tone="text-brand-700" />
-        <Stat label="أجور التوصيل" value={formatIQD(delivery)} tone="text-slate-700" />
+        <Stat label="أجور التوصيل" value={formatIQD(delivery)} tone="text-ink-700" />
         <Stat label="عدد الطلبات" value={formatNumber(inRange.length)} tone="text-blue-700" />
-        <Stat label="منها جملة" value={formatNumber(wholesale)} tone="text-amber-700" />
+        <Stat label="منها جملة" value={formatNumber(wholesale)} tone="text-warn-600" />
       </div>
 
       <section className="card mb-4 p-4">
@@ -90,12 +90,12 @@ export default function Reports() {
           <Trophy className="size-4 text-amber-500" /> الأكثر مبيعاً
         </h2>
         {top.length === 0 ? (
-          <p className="py-4 text-center text-sm text-slate-500">لا مبيعات في هذه الفترة.</p>
+          <p className="py-4 text-center text-sm text-ink-600">لا مبيعات في هذه الفترة.</p>
         ) : (
           <ul className="grid gap-2">
             {top.map(([name, qty], i) => (
               <li key={name} className="flex items-center gap-3">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-extrabold text-slate-600">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-ink-100 text-[11px] font-extrabold text-ink-600">
                   {i + 1}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
@@ -110,21 +110,21 @@ export default function Reports() {
         <h2 className="mb-1 flex items-center gap-2 text-sm font-extrabold">
           <PackageX className="size-4 text-red-500" /> نواقص المخزون
         </h2>
-        <p className="mb-3 text-xs text-slate-500">المنتجات التي بقي منها درزن واحد أو أقل (12 قطعة).</p>
+        <p className="mb-3 text-xs text-ink-600">المنتجات التي بقي منها درزن واحد أو أقل (12 قطعة).</p>
 
         {lowStock.length === 0 ? (
-          <p className="py-4 text-center text-sm text-slate-500">لا توجد نواقص — المخزون بخير.</p>
+          <p className="py-4 text-center text-sm text-ink-600">لا توجد نواقص — المخزون بخير.</p>
         ) : (
           <ul className="grid gap-1.5">
             {lowStock.map((p) => (
               <li key={p.id}>
-                <Link to={`/dashboard/product/${p.id}`} className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-slate-50">
+                <Link to={`/dashboard/product/${p.id}`} className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-ink-50">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{p.name}</span>
-                    <span className="block text-[11px] text-slate-400">{p.categories?.name}</span>
+                    <span className="block text-[11px] text-ink-600">{p.categories?.name}</span>
                   </span>
                   <span className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-extrabold ${
-                    p.quantity_single === 0 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                    p.quantity_single === 0 ? 'bg-red-50 text-danger-700' : 'bg-amber-50 text-warn-600'
                   }`}>
                     {p.quantity_single === 0 ? 'نفد' : `${formatNumber(p.quantity_single)} قطعة`}
                   </span>
@@ -141,7 +141,7 @@ export default function Reports() {
 function Stat({ icon, label, value, tone }) {
   return (
     <div className="card p-3">
-      <p className="flex items-center gap-1.5 text-[11px] text-slate-500">{icon}{label}</p>
+      <p className="flex items-center gap-1.5 text-[11px] text-ink-600">{icon}{label}</p>
       <p className={`mt-1 text-sm font-extrabold ${tone}`}>{value}</p>
     </div>
   )

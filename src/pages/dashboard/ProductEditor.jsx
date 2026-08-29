@@ -178,21 +178,21 @@ export default function ProductEditor() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
+    return <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
   }
 
-  const field = 'w-full rounded-xl border border-slate-300 px-3 py-2 focus:border-brand-500 focus:outline-none'
+  const field = 'w-full rounded-xl border border-ink-200 px-3 py-2 focus:border-brand-500 focus:outline-none'
   const label = 'block text-sm font-semibold mb-1'
 
   return (
     <form onSubmit={save} className="mx-auto max-w-lg">
       <div className="mb-4 flex items-center gap-2">
-        <Link to="/dashboard" className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="رجوع">
+        <Link to="/dashboard" className="rounded-lg p-1.5 hover:bg-ink-100" aria-label="رجوع">
           <ArrowRight className="size-5" />
         </Link>
         <h1 className="text-lg font-bold">{isNew ? 'منتج جديد' : 'تعديل المنتج'}</h1>
         {!isNew && isAdmin && (
-          <button type="button" onClick={remove} className="ms-auto flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">
+          <button type="button" onClick={remove} className="ms-auto flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-danger-700 hover:bg-red-50">
             <Trash2 className="size-4" /> حذف
           </button>
         )}
@@ -208,7 +208,7 @@ export default function ProductEditor() {
               placeholder="امسح أو اكتب يدوياً"
               className={field + ' text-start'}
             />
-            <button type="button" onClick={() => setScanning(true)} className="shrink-0 rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900" aria-label="مسح">
+            <button type="button" onClick={() => setScanning(true)} className="shrink-0 rounded-xl bg-ink-800 px-3 text-white hover:bg-ink-900" aria-label="مسح">
               <ScanLine className="size-5" />
             </button>
           </div>
@@ -237,11 +237,11 @@ export default function ProductEditor() {
               <button
                 key={o.v} type="button" onClick={() => setForm({ ...form, sold_by: o.v })}
                 className={`rounded-xl border-2 p-2.5 text-start transition ${
-                  form.sold_by === o.v ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'
+                  form.sold_by === o.v ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white'
                 }`}
               >
                 <span className="block text-sm font-bold">{o.t}</span>
-                <span className="block text-[11px] text-slate-500">{o.s}</span>
+                <span className="block text-[11px] text-ink-600">{o.s}</span>
               </button>
             ))}
           </div>
@@ -253,8 +253,8 @@ export default function ProductEditor() {
             {preview || form.image_url ? (
               <img src={preview || form.image_url} alt="" className="size-20 rounded-xl object-cover" />
             ) : (
-              <span className="flex size-20 items-center justify-center rounded-xl bg-slate-100">
-                <ImageOff className="size-6 text-slate-400" />
+              <span className="flex size-20 items-center justify-center rounded-xl bg-ink-100">
+                <ImageOff className="size-6 text-ink-600" />
               </span>
             )}
             {/* capture يفتح الكاميرا مباشرة، وبدونه يفتح المعرض وأي مصدر صور آخر */}
@@ -262,11 +262,11 @@ export default function ProductEditor() {
             <input ref={galleryInput} type="file" accept="image/*" onChange={pickImage} className="hidden" />
             <div className="grid flex-1 grid-cols-2 gap-2">
               <button type="button" onClick={() => cameraInput.current?.click()}
-                      className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-bold hover:bg-slate-200">
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-ink-100 px-3 py-2.5 text-sm font-bold hover:bg-ink-200">
                 <Camera className="size-4" /> كاميرا
               </button>
               <button type="button" onClick={() => galleryInput.current?.click()}
-                      className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-bold hover:bg-slate-200">
+                      className="flex items-center justify-center gap-1.5 rounded-xl bg-ink-100 px-3 py-2.5 text-sm font-bold hover:bg-ink-200">
                 <Images className="size-4" /> المعرض
               </button>
             </div>
@@ -277,7 +277,7 @@ export default function ProductEditor() {
               <a
                 href={googleLens(form.image_url)}
                 target="_blank" rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-50 py-2.5 text-sm font-bold text-amber-800 hover:bg-amber-100"
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-50 py-2.5 text-sm font-bold text-warn-600 hover:bg-amber-100"
               >
                 <ScanSearch className="size-4" /> عدسة جوجل — تعرّف على المنتج
               </a>
@@ -302,13 +302,13 @@ export default function ProductEditor() {
             />
             <button
               type="button" onClick={grabFromUrl} disabled={fetching || !imageUrl.trim()}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-bold text-white disabled:opacity-40"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-ink-900 px-3 text-sm font-bold text-white disabled:opacity-40"
             >
               {fetching ? <Loader2 className="size-4 animate-spin" /> : <LinkIcon className="size-4" />} جلب
             </button>
           </div>
 
-          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+          <p className="mt-1.5 text-[11px] leading-relaxed text-ink-600">
             صوّر المنتج واحفظه، ثم افتح <b>عدسة جوجل</b> لتتعرّف عليه وتريك صوره
             الرسمية. انسخ رابط الصورة الأوضح والصقه هنا ليحلّ محلّ صورتك.
           </p>
@@ -317,10 +317,10 @@ export default function ProductEditor() {
 
       <div className="mt-4 grid gap-3 rounded-2xl bg-white p-4">
         <div className="flex items-center gap-2 font-semibold">
-          <Boxes className="size-5 text-brand-600" />
+          <Boxes className="size-5 text-brand-700" />
           {isNew ? 'الكمية الأولى' : 'إضافة كمية'}
           {!isNew && (
-            <span className="ms-auto text-sm font-normal text-slate-500">
+            <span className="ms-auto text-sm font-normal text-ink-600">
               الرصيد الحالي: {formatNumber(form.quantity_single)} قطعة
             </span>
           )}
@@ -354,16 +354,16 @@ export default function ProductEditor() {
             <label className={label} htmlFor="wholesale">سعر الجملة</label>
             <input id="wholesale" type="number" min="0" inputMode="numeric" value={prices.price_wholesale} onChange={(e) => setPrices({ ...prices, price_wholesale: e.target.value })} placeholder="0" className={field} />
           </div>
-          <p className="col-span-2 text-xs text-slate-500">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>
+          <p className="col-span-2 text-xs text-ink-600">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>
         </div>
       )}
 
-      {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
       {done && <p className="mt-4 rounded-lg bg-brand-50 p-3 text-sm text-brand-900">{done}</p>}
 
       <button
         type="submit" disabled={busy}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 py-3 font-semibold text-white hover:bg-brand-800 disabled:opacity-60"
       >
         {busy ? <Loader2 className="size-5 animate-spin" /> : <Save className="size-5" />}
         {isNew ? 'حفظ المنتج' : 'حفظ التغييرات'}

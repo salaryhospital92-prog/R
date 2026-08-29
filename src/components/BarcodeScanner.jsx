@@ -45,20 +45,20 @@ export default function BarcodeScanner({ onScan, onClose }) {
       <div className="w-full max-w-md rounded-2xl bg-white p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold">مسح الباركود</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100" aria-label="إغلاق">
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-ink-100" aria-label="إغلاق">
             <X className="size-5" />
           </button>
         </div>
 
-        <div id={REGION_ID} className="overflow-hidden rounded-xl bg-slate-900 min-h-52" />
+        <div id={REGION_ID} className="overflow-hidden rounded-xl bg-ink-900 min-h-52" />
 
         {error && (
-          <p className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <p className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-danger-700">
             <CameraOff className="size-5 shrink-0" />
             {error}
           </p>
         )}
-        <p className="mt-3 text-center text-xs text-slate-500">
+        <p className="mt-3 text-center text-xs text-ink-600">
           صوّب الكاميرا على الباركود — تُقرأ تلقائياً
         </p>
       </div>

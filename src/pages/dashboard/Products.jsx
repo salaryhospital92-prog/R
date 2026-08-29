@@ -59,13 +59,13 @@ export default function Products() {
         <div className="ms-auto flex flex-1 gap-2 sm:flex-none">
           <button
             onClick={() => setScanning(true)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-white hover:bg-slate-900 sm:flex-none"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-ink-800 px-3 py-2 text-sm font-bold text-white hover:bg-ink-900 sm:flex-none"
           >
             <ScanLine className="size-4" /> مسح باركود
           </button>
           <Link
             to="/dashboard/product/new"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-sm font-bold text-white hover:bg-brand-700 sm:flex-none"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-700 px-3 py-2 text-sm font-bold text-white hover:bg-brand-800 sm:flex-none"
           >
             <Plus className="size-4" /> منتج جديد
           </Link>
@@ -74,31 +74,31 @@ export default function Products() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         <div className="relative min-w-52 flex-1">
-          <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-slate-400" />
+          <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-ink-600" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="ابحث بالاسم أو الباركود…"
-            className="w-full rounded-xl border border-slate-300 py-2 pe-3 ps-9 focus:border-brand-500 focus:outline-none"
+            className="w-full rounded-xl border border-ink-200 py-2 pe-3 ps-9 focus:border-brand-500 focus:outline-none"
           />
         </div>
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="rounded-xl border border-slate-300 px-3 py-2 focus:border-brand-500 focus:outline-none"
+          className="rounded-xl border border-ink-200 px-3 py-2 focus:border-brand-500 focus:outline-none"
         >
           <option value="">كل الأصناف</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-600" /></div>
+        <div className="flex justify-center py-16"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
       ) : shown.length === 0 ? (
-        <div className="rounded-2xl bg-white p-10 text-center text-slate-500">
-          <Package className="mx-auto mb-2 size-8 text-slate-300" />
+        <div className="rounded-2xl bg-white p-10 text-center text-ink-600">
+          <Package className="mx-auto mb-2 size-8 text-ink-200" />
           {products.length === 0 ? 'لا توجد منتجات بعد — ابدأ بإضافة منتج.' : 'لا نتائج مطابقة للبحث.'}
         </div>
       ) : (
@@ -107,19 +107,19 @@ export default function Products() {
             <li key={p.id}>
               <Link
                 to={`/dashboard/product/${p.id}`}
-                className="flex items-center gap-3 rounded-2xl bg-white p-3 hover:bg-slate-50"
+                className="flex items-center gap-3 rounded-2xl bg-white p-3 hover:bg-ink-50"
               >
                 {p.image_url ? (
                   <img src={p.image_url} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
                 ) : (
-                  <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-slate-100">
-                    <ImageOff className="size-5 text-slate-400" />
+                  <span className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-ink-100">
+                    <ImageOff className="size-5 text-ink-600" />
                   </span>
                 )}
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{p.name}</p>
-                  <p className="truncate text-xs text-slate-500">
+                  <p className="truncate text-xs text-ink-600">
                     {p.categories?.name}
                     {p.barcode && <span dir="ltr"> · {p.barcode}</span>}
                   </p>
@@ -137,7 +137,7 @@ export default function Products() {
 
                 <span
                   className={`shrink-0 rounded-lg px-2.5 py-1 text-sm font-bold ${
-                    p.quantity_single > 0 ? 'bg-brand-50 text-brand-700' : 'bg-red-50 text-red-700'
+                    p.quantity_single > 0 ? 'bg-brand-50 text-brand-700' : 'bg-red-50 text-danger-700'
                   }`}
                 >
                   {formatNumber(p.quantity_single)} قطعة
