@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes, Images, Search,
-  ScanSearch, Link as LinkIcon,
+  ScanSearch, Link as LinkIcon, Star,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
@@ -30,6 +30,7 @@ export default function ProductEditor() {
     image_url: '',
     quantity_single: 0,
     sold_by: 'dozen',
+    is_featured: false,
   })
   const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
   const [dozens, setDozens] = useState('')
@@ -45,6 +46,8 @@ export default function ProductEditor() {
   const [done, setDone] = useState('')
 
   const added = totalUnits(dozens, singles)
+  const byDozen = form.sold_by !== 'piece'
+  const wholesalePerPiece = Math.round((Number(prices.price_wholesale) || 0) / (byDozen ? 12 : 1))
 
   useEffect(() => {
     supabase.from('categories').select('id, name').order('sort_order')
@@ -54,8 +57,8 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, is_featured, product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, is_featured'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
       if (error || !data) {
@@ -68,11 +71,14 @@ export default function ProductEditor() {
           image_url: data.image_url ?? '',
           quantity_single: data.quantity_single,
           sold_by: data.sold_by ?? 'dozen',
+          is_featured: data.is_featured ?? false,
         })
         if (data.product_prices) {
           setPrices({
             price_retail: String(data.product_prices.price_retail ?? 0),
-            price_wholesale: String(data.product_prices.price_wholesale ?? 0),
+            // الجملة تُخزَّن للقطعة وتُعرض بالدرزن — لغة السوق
+            price_wholesale: String((data.product_prices.price_wholesale ?? 0)
+              * ((data.sold_by ?? 'dozen') === 'piece' ? 1 : 12)),
           })
         }
       }
@@ -117,6 +123,7 @@ export default function ProductEditor() {
         name: form.name.trim(),
         category_id: Number(form.category_id),
         sold_by: form.sold_by,
+        is_featured: form.is_featured,
       }
 
       let productId = id
@@ -147,10 +154,11 @@ export default function ProductEditor() {
       }
 
       if (isAdmin && (prices.price_retail !== '' || prices.price_wholesale !== '')) {
+        const entered = Math.max(0, Number(prices.price_wholesale) || 0)
         const { error } = await supabase.from('product_prices').upsert({
           product_id: productId,
           price_retail: Math.max(0, Math.round(Number(prices.price_retail) || 0)),
-          price_wholesale: Math.max(0, Math.round(Number(prices.price_wholesale) || 0)),
+          price_wholesale: byDozen ? Math.round(entered / 12) : Math.round(entered),
           updated_at: new Date().toISOString(),
         })
         if (error) throw error
@@ -246,6 +254,22 @@ export default function ProductEditor() {
             ))}
           </div>
         </div>
+
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-brand-50 p-3 ring-1 ring-brand-700/15">
+          <input
+            type="checkbox" checked={form.is_featured}
+            onChange={(e) => setForm({ ...form, is_featured: e.target.checked })}
+            className="size-5 accent-emerald-700"
+          />
+          <span className="flex-1">
+            <span className="flex items-center gap-1.5 text-sm font-bold">
+              <Star className="size-4 text-brand-700" /> منتج مميّز
+            </span>
+            <span className="block text-[11px] text-ink-600">
+              يتصدّر قسم «الأكثر طلباً» في الصفحة الرئيسية
+            </span>
+          </span>
+        </label>
 
         <div>
           <span className={label}>صورة المنتج</span>
@@ -351,9 +375,22 @@ export default function ProductEditor() {
             <input id="retail" type="number" min="0" inputMode="numeric" value={prices.price_retail} onChange={(e) => setPrices({ ...prices, price_retail: e.target.value })} placeholder="0" className={field} />
           </div>
           <div>
-            <label className={label} htmlFor="wholesale">سعر الجملة</label>
+            <label className={label} htmlFor="wholesale">
+              {byDozen ? 'سعر الدرزن (12 قطعة)' : 'الجملة — للقطعة'}
+            </label>
             <input id="wholesale" type="number" min="0" inputMode="numeric" value={prices.price_wholesale} onChange={(e) => setPrices({ ...prices, price_wholesale: e.target.value })} placeholder="0" className={field} />
           </div>
+          {byDozen && Number(prices.price_wholesale) > 0 && (
+            <p className="col-span-2 rounded-lg bg-brand-50 px-3 py-2 text-center text-xs font-bold text-brand-900">
+              القطعة بالجملة = {formatNumber(wholesalePerPiece)} د.ع
+            </p>
+          )}
+          {wholesalePerPiece > 0 && Number(prices.price_retail) > 0 && wholesalePerPiece >= Number(prices.price_retail) && (
+            <p className="col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-warn-600">
+              ⚠️ سعر الجملة للقطعة ({formatNumber(wholesalePerPiece)}) ليس أقل من سعر المفرد
+              ({formatNumber(Number(prices.price_retail))}) — تأكد أنك أدخلت <b>سعر الدرزن</b> لا سعر القطعة.
+            </p>
+          )}
           <p className="col-span-2 text-xs text-ink-600">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>
         </div>
       )}

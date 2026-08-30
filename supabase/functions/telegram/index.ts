@@ -319,6 +319,20 @@ async function onAction(chat: number, action: string, agent: Agent) {
   if (ns === 'ord') return showOrder(chat, key, admin)
   if (ns === 'ost') return setOrderStatus(chat, key, arg!, admin)
   if (ns === 'agent') return toggleAgent(chat, Number(key), admin)
+
+  // تمييز منتج ليتصدّر «الأكثر طلباً» في الصفحة الرئيسية
+  if (ns === 'feat') {
+    if (!admin) return
+    const { data: cur } = await db.from('products').select('name, is_featured').eq('id', key).maybeSingle()
+    if (!cur) return screen(chat, '❌ لم أجد المنتج.', [backRow()])
+    await db.from('products').update({ is_featured: !cur.is_featured }).eq('id', key)
+    return screen(chat,
+      `${cur.is_featured ? '☆ أُلغي تمييز' : '⭐ صار مميّزاً'}: <b>${cur.name}</b>\n\n` +
+      (cur.is_featured
+        ? 'لن يتصدّر «الأكثر طلباً» بعد الآن.'
+        : 'سيتصدّر قسم «الأكثر طلباً» في الصفحة الرئيسية.'),
+      [backRow()])
+  }
 }
 
 // ==================================================== بدء المعالجات
@@ -1229,7 +1243,7 @@ function parseQty(text: string): { dozen: number; singles: number } | null {
 async function findProduct(term: string) {
   const q = term.trim()
   if (!q) return null
-  const cols = 'id, code, name, quantity_single, sold_by'
+  const cols = 'id, code, name, quantity_single, sold_by, is_featured'
   const { data: byCode } = await db.from('products').select(cols).eq('barcode', q).maybeSingle()
   if (byCode) return byCode
   // رمز صفحة المنتج القصير يصلح للبحث أيضاً
@@ -1307,12 +1321,13 @@ async function quickSearch(chat: number, term: string, admin: boolean) {
         : `📦 الدرزن: ${iqd(w * 12)} (${iqd(w)} للقطعة)`)
   }
   return screen(chat,
-    `📦 <b>${p.name}</b>\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}` +
+    `📦 <b>${p.name}</b>${(p as any).is_featured ? ' ⭐' : ''}\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}` +
     (STORE_URL ? `\n\n🔗 ${STORE_URL}/p/${p.code}` : ''),
     [
       STORE_URL ? [['🔗 صفحة المنتج', `${STORE_URL}/p/${p.code}`]] : [],
       [['📥 إضافة كمية', 'f:addStock']],
       admin ? [['💵 تسعير', 'f:setPrice']] : [],
+      admin ? [[(p as any).is_featured ? '⭐ إلغاء التمييز' : '☆ اجعله مميّزاً', `feat:${p.id}`]] : [],
       googleRow(p.name, true),
       backRow(),
     ])

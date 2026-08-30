@@ -74,7 +74,7 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
 
         <Link
           to={`/p/${product.code}`}
-          className="mt-1.5 line-clamp-2 text-[13px] font-bold leading-snug text-ink-700 hover:text-brand-800"
+          className="mt-1 line-clamp-2 py-1 text-[13px] font-bold leading-snug text-ink-700 hover:text-brand-800"
         >
           {product.name}
         </Link>

@@ -512,3 +512,71 @@ with (security_invoker = off) as
    where p.is_active = true;
 
 grant select on public.storefront_products to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- 12) تصحيح ثانٍ لأسعار الجملة + ما تحتاجه الصفحة الرئيسية الجديدة
+--     السبب الجذري كان محرّر المنتج في اللوحة: كان يحفظ حقل الجملة كما هو
+--     بلا قسمة على 12، بخلاف شاشة الأسعار والبوت. أُصلح في الواجهة، وهذا
+--     تصحيح للبيانات التي دخلت قبله.
+-- ---------------------------------------------------------------------
+do $$ declare r record; n int; begin
+  raise notice '── منتجات ملتبسة (الجملة أغلى لكن دون 5× المفرد) — لم تُمَس ──';
+  for r in select p.name, pr.price_retail rt, pr.price_wholesale wh
+             from public.products p join public.product_prices pr on pr.product_id = p.id
+            where p.sold_by = 'dozen' and pr.price_wholesale > 0
+              and pr.price_wholesale > pr.price_retail
+              and pr.price_wholesale < pr.price_retail * 5
+            order by p.name loop
+    raise notice '  ⚠️ % | مفرد % | جملة %', r.name, r.rt, r.wh;
+  end loop;
+
+  raise notice '── منتجات بلا سعر مفرد لكن لها سعر جملة — لم تُمَس ──';
+  for r in select p.name, pr.price_wholesale wh
+             from public.products p join public.product_prices pr on pr.product_id = p.id
+            where pr.price_retail = 0 and pr.price_wholesale > 0 order by p.name loop
+    raise notice '  ⚠️ % | جملة %', r.name, r.wh;
+  end loop;
+
+  update public.product_prices pr
+     set price_wholesale = round(pr.price_wholesale / 12.0), updated_at = now()
+    from public.products p
+   where p.id = pr.product_id and p.sold_by = 'dozen'
+     and pr.price_retail > 0 and pr.price_wholesale >= pr.price_retail * 5;
+  get diagnostics n = row_count;
+  raise notice '✅ صُحّح % منتج (قُسمت الجملة على 12)', n;
+end $$;
+
+-- منتج مميّز — يعلّمه المالك يدوياً ليتصدّر «الأكثر طلباً»
+alter table public.products
+  add column if not exists is_featured boolean not null default false;
+
+create index if not exists idx_products_featured on public.products (is_featured) where is_featured;
+
+-- العرض العام: أُضيف تاريخ الإضافة (لقسم «الجديدة») وعلامة التمييز
+drop view if exists public.storefront_products;
+create view public.storefront_products
+with (security_invoker = off) as
+  select p.id, p.code, p.name, p.category_id, c.name as category,
+         p.image_url, p.quantity_single, p.sold_by, p.is_featured, p.created_at,
+         (p.quantity_single > 0) as in_stock,
+         pr.price_retail, pr.price_wholesale
+    from public.products p
+    join public.categories c      on c.id = p.category_id
+    join public.product_prices pr on pr.product_id = p.id
+   where p.is_active = true;
+
+grant select on public.storefront_products to anon, authenticated;
+
+-- الأكثر مبيعاً — يكشف معرّف المنتج وعدد المبيع فقط، لا زبائن ولا مبالغ
+drop view if exists public.popular_products;
+create view public.popular_products
+with (security_invoker = off) as
+  select (it->>'product_id')::uuid as product_id,
+         sum((it->>'qty')::int)::bigint as qty_sold
+    from public.orders o, jsonb_array_elements(o.items_json) it
+   where o.status <> 'cancelled'
+     and (it->>'product_id') is not null
+   group by 1;
+
+grant select on public.popular_products to anon, authenticated;

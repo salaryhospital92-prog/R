@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { hasStoredSession } from './lib/supabase'
 import { CartProvider } from './context/CartContext'
-import ModeSelect from './pages/storefront/ModeSelect'
+import Home from './pages/storefront/Home'
 import Catalog from './pages/storefront/Catalog'
 import Checkout from './pages/storefront/Checkout'
 import ProductPage from './pages/storefront/ProductPage'
@@ -51,7 +51,7 @@ export default function App() {
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Routes>
             {/* المتجر العام — بلا تسجيل دخول */}
-            <Route path="/" element={<ModeSelect />} />
+            <Route path="/" element={<Home />} />
             <Route path="/retail" element={<Catalog mode="retail" />} />
             <Route path="/wholesale" element={<Catalog mode="wholesale" />} />
             <Route path="/checkout" element={<Checkout />} />

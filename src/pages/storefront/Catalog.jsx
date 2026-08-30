@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
@@ -13,8 +13,19 @@ export default function Catalog({ mode }) {
   const cart = useCart()
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
-  const [categoryId, setCategoryId] = useState('')
-  const [query, setQuery] = useState('')
+  // الصنف والبحث يأتيان من الرابط ليكون كل عرض قابلاً للمشاركة
+  const [params, setParams] = useSearchParams()
+  const categoryId = params.get('cat') ?? ''
+  const query = params.get('q') ?? ''
+
+  const patch = (next) => setParams((prev) => {
+    const p = new URLSearchParams(prev)
+    Object.entries(next).forEach(([k, v]) => (v ? p.set(k, v) : p.delete(k)))
+    return p
+  }, { replace: true })
+
+  const setCategoryId = (v) => patch({ cat: v })
+  const setQuery = (v) => patch({ q: v })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
