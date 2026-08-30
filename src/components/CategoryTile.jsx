@@ -2,8 +2,12 @@ import { Link } from 'react-router-dom'
 import { formatNumber } from '../lib/format'
 
 /**
- * بطاقة صنف — أيقونتها فسيفساء 2×2 من صور منتجات الصنف نفسه.
- * لا أصول مرسومة: الزبون يرى بضاعتك الحقيقية قبل أن يدخل القسم.
+ * بطاقة صنف مربّعة — صورتها فسيفساء 2×2 من منتجات الصنف نفسه.
+ * لا أصول مرسومة: الزبون يرى بضاعتك قبل أن يدخل القسم.
+ *
+ * الاسم يجلس فوق الصور داخل تدرّج حبري معتم من الأسفل — أرضيته لا تفتح عن
+ * ink-900/85 فوق أغمق ربع من الصورة، فيبقى النص الأبيض مقروءاً مهما كانت
+ * الصور فاتحة (تُقاس أسوأ حالة تحليلياً كما في شرائح الإعلانات).
  */
 export default function CategoryTile({ category, products, index = 0 }) {
   const tiles = products.filter((p) => p.image_url).slice(0, 4).map((p) => p.image_url)
@@ -11,13 +15,10 @@ export default function CategoryTile({ category, products, index = 0 }) {
   return (
     <Link
       to={`/retail?cat=${category.id}`}
-      className="animate-fade-up surface-raised group flex items-center gap-3 p-2.5 transition hover:-translate-y-0.5"
+      className="animate-fade-up surface-raised group relative block overflow-hidden transition hover:-translate-y-0.5"
       style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
     >
-      <span
-        aria-hidden="true"
-        className="grid size-16 shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-xl bg-ink-100"
-      >
+      <span aria-hidden="true" className="grid aspect-square grid-cols-2 grid-rows-2 gap-px bg-ink-100">
         {tiles.length
           ? tiles.map((src, k) => (
               <img key={k} src={src} alt="" loading="lazy"
@@ -26,9 +27,15 @@ export default function CategoryTile({ category, products, index = 0 }) {
           : <span className="col-span-2 row-span-2" />}
       </span>
 
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-extrabold text-ink-900">{category.name}</span>
-        <span className="tnum block text-[12px] text-ink-600">{formatNumber(products.length)} منتج</span>
+      {/* ستارة معتمة تضمن قراءة الاسم فوق أي صورة */}
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-ink-900 via-ink-900/85 to-transparent"
+      />
+
+      <span className="absolute inset-x-0 bottom-0 p-2.5 text-white">
+        <span className="block truncate text-[14px] font-extrabold leading-tight">{category.name}</span>
+        <span className="tnum block text-[11px] text-white/85">{formatNumber(products.length)} منتج</span>
       </span>
     </Link>
   )

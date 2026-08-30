@@ -157,7 +157,7 @@ export default function Home() {
           {loading ? (
             <div className="flex justify-center py-10"><Loader2 className="size-7 animate-spin text-brand-700" /></div>
           ) : (
-            <nav aria-label="تصفّح الأصناف" className="grid gap-2.5 sm:grid-cols-2">
+            <nav aria-label="تصفّح الأصناف" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
               {categories
                 .filter((c) => (byCategory[c.id] ?? []).length > 0)
                 .map((c, i) => (
