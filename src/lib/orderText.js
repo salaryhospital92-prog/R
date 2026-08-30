@@ -1,17 +1,18 @@
 import { formatIQD, formatNumber } from './format'
 
-const PHONE = import.meta.env.VITE_STORE_WHATSAPP
-
-/** أصل الموقع — منه تُبنى روابط صفحات المنتجات داخل الرسالة */
+/** أصل الموقع — منه تُبنى روابط صفحات المنتجات داخل النص */
 const STORE_URL = typeof window === 'undefined' ? 'https://alrifai.shop' : window.location.origin
 
 /**
- * تُبنى رسالة الواتساب من ردّ create_order فقط — لا من السلة المحلية.
- * هكذا تطابق كل رسالة تصل المدير سجلَّها في قاعدة البيانات برقم الطلب.
+ * نصّ الطلب — يُبنى من ردّ create_order فقط، لا من السلة المحلية، فيطابق
+ * دائماً ما هو محفوظ في قاعدة البيانات برقم الطلب.
+ *
+ * الطلب يصل المتجر بنفسه (مشغّل قاعدة البيانات ← بوت تيليغرام)، وهذا النصّ
+ * نسخة للزبون يحتفظ بها أو يرسلها لمن يشاء — ليس قناة إرسال.
  */
 export function buildOrderMessage(order) {
   const lines = [
-    `*طلب جديد #${order.order_number}*`,
+    `*طلب #${order.order_number}*`,
     'أسواق الرفاعي — الرمادي، شارع السينما',
     '',
     `الزبون: ${order.customer_name}`,
@@ -49,8 +50,3 @@ export function buildOrderMessage(order) {
 
   return lines.join('\n')
 }
-
-export const whatsappUrl = (text) =>
-  `https://wa.me/${PHONE}?text=${encodeURIComponent(text)}`
-
-export const storePhoneConfigured = Boolean(PHONE)

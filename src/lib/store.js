@@ -16,9 +16,6 @@ export const STORE = {
   hours: 'يومياً من 9:00 صباحاً حتى 8:00 مساءً',
 }
 
-/** رقم استقبال الطلبات (يبني رسالة الطلب) */
-export const ORDER_WHATSAPP = import.meta.env.VITE_STORE_WHATSAPP
-
 /** رقم التواصل المباشر — يفتح محادثة واتساب برسالة ترحيب جاهزة */
 export const CONTACT_WHATSAPP = import.meta.env.VITE_CONTACT_WHATSAPP
 

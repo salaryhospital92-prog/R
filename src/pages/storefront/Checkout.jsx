@@ -1,15 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, Trash2, Loader2, CheckCircle2, MessageCircle, Truck, ImageOff, Plus, Minus,
-  Copy, Check, Phone,
+  ArrowRight, Trash2, Loader2, CheckCircle2, Truck, ImageOff, Plus, Minus, Copy, Check,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
-import { buildOrderMessage, whatsappUrl, storePhoneConfigured } from '../../lib/whatsapp'
+import { buildOrderMessage } from '../../lib/orderText'
 import ContactCard from '../../components/ContactCard'
-import { STORE, telUrl } from '../../lib/store'
 
 export default function Checkout() {
   const cart = useCart()
@@ -79,60 +77,48 @@ export default function Checkout() {
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 p-5 text-center">
         <CheckCircle2 className="animate-pop mx-auto size-16 text-brand-700" />
         <div className="animate-fade-up">
-          <h1 className="text-xl font-bold">تم استلام طلبك</h1>
-          <p className="mt-1 text-ink-600">رقم الطلب</p>
-          <p className="text-3xl font-bold text-brand-700">#{result.order_number}</p>
+          <h1 className="text-xl font-bold">
+            رقم طلبك <span className="text-brand-700 tnum">#{result.order_number}</span>
+          </h1>
+          <p className="mt-1.5 leading-relaxed text-ink-700">
+            سيتم التواصل معك قريباً أو عند استلام الطلب.
+          </p>
         </div>
 
-        <div className="animate-fade-up card p-4 text-start text-sm" style={{ animationDelay: '80ms' }}>
-          <Row label="مجموع البضاعة" value={formatIQD(result.subtotal)} />
-          <Row label={`التوصيل — ${result.delivery_zone}`} value={formatIQD(result.delivery_fee)} />
-          <div className="mt-2 border-t border-ink-200 pt-2">
-            <Row label="المجموع الكلي" value={formatIQD(result.total_amount)} bold />
-          </div>
+        {/* المبلغ الذي يدفعه الزبون للمندوب — أهم رقم في الشاشة، فهو البطل */}
+        <div className="animate-fade-up surface-ink p-5" style={{ animationDelay: '80ms' }}>
+          <p className="text-sm font-bold text-white/80">المبلغ الكلي للتسليم</p>
+          <p className="price-xl mt-1 text-white">
+            {formatNumber(result.total_amount)} <span className="text-[20px]">دينار</span>
+          </p>
+          <p className="mt-2 text-[12px] leading-relaxed text-white/75">
+            البضاعة {formatNumber(result.subtotal)} + التوصيل إلى {result.delivery_zone}{' '}
+            {formatNumber(result.delivery_fee)}
+          </p>
         </div>
 
-        <p className="animate-fade-up rounded-2xl bg-brand-50 p-3 text-sm font-bold leading-relaxed text-brand-900" style={{ animationDelay: '140ms' }}>
-          طلبك وصل المتجر ومسجَّل باسمك — سيتصل بك المجهِّز على الرقم الذي كتبته.
-          <span className="mt-1 block font-normal text-ink-700">
-            وإن أحببت تأكيده بنفسك، اختر ما يناسبك:
-          </span>
-        </p>
+        {result.has_price_request && (
+          <p className="animate-fade-up rounded-2xl bg-amber-50 p-3 text-sm font-bold leading-relaxed text-warn-600">
+            في طلبك بند بلا سعر — يُحدَّد عند التأكيد، فيتغيّر المبلغ أعلاه.
+          </p>
+        )}
 
-        <a
-          href={whatsappUrl(buildOrderMessage(result))}
-          target="_blank" rel="noreferrer"
-          className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_24px_-10px_rgb(4_120_87/0.6)] active:scale-95"
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard?.writeText(buildOrderMessage(result))
+              .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500) })
+              .catch(() => setCopied(false))
+          }}
+          className="animate-fade-up flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ink-100 text-sm font-extrabold text-ink-900 active:scale-95"
           style={{ animationDelay: '200ms' }}
         >
-          <MessageCircle className="size-5" /> إرسال نسخة عبر واتساب
-        </a>
-
-        <div className="animate-fade-up grid grid-cols-2 gap-2" style={{ animationDelay: '240ms' }}>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard?.writeText(buildOrderMessage(result))
-                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500) })
-                .catch(() => setCopied(false))
-            }}
-            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ink-100 text-sm font-extrabold text-ink-900 active:scale-95"
-          >
-            {copied ? <Check className="size-4 text-brand-700" /> : <Copy className="size-4" />}
-            {copied ? 'نُسخ النص' : 'نسخ نص الطلب'}
-          </button>
-          <a
-            href={telUrl()}
-            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ink-100 text-sm font-extrabold text-ink-900 active:scale-95"
-          >
-            <Phone className="size-4" /> اتصال بالمتجر
-          </a>
-        </div>
+          {copied ? <Check className="size-4 text-brand-700" /> : <Copy className="size-4" />}
+          {copied ? 'نُسخ النص' : 'نسخ نص الطلب'}
+        </button>
 
         <p aria-live="polite" className="text-xs leading-relaxed text-ink-600">
-          {copied
-            ? `نُسخ نص الطلب — الصقه في أي تطبيق وأرسله إلى ${STORE.phone}.`
-            : 'إن كان في هاتفك واتساب عادي وواتساب أعمال، سيسألك الهاتف أيّهما تستعمل. وإن لم يفتح، انسخ النص وأرسله بأي طريقة.'}
+          {copied ? 'نُسخ نص الطلب — احتفظ به أو أرسله لمن تشاء.' : '\u00a0'}
         </p>
 
         <Link to="/" className="text-sm font-semibold text-ink-600">العودة للمتجر</Link>
@@ -283,15 +269,10 @@ export default function Checkout() {
           <Row label="المجموع الكلي" value={formatIQD(total)} bold />
         </div>
         <p className="mt-2 text-xs text-ink-600">
-          المبالغ النهائية تُحسب في المتجر عند الحفظ، وتظهر في رسالة الواتساب.
+          المبالغ النهائية تُحسب في المتجر عند الحفظ، والمبلغ الظاهر هنا هو ما يصلك.
         </p>
       </div>
 
-      {!storePhoneConfigured && (
-        <p className="mx-3 mt-3 rounded-xl bg-amber-50 p-3 text-sm text-warn-600">
-          رقم واتساب المتجر غير مضبوط — أضف VITE_STORE_WHATSAPP في ملف .env.
-        </p>
-      )}
       {error && (
         <p role="alert" className="surface mx-3 mt-3 border-s-4 border-danger-700 p-3 text-sm font-semibold text-danger-700">
           {error}
@@ -301,8 +282,8 @@ export default function Checkout() {
       <div className="glass fixed inset-x-0 bottom-0 mx-auto max-w-md p-3">
         <button type="submit" disabled={busy}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 font-bold text-white active:scale-95 disabled:opacity-60">
-          {busy ? <Loader2 className="size-5 animate-spin" /> : <MessageCircle className="size-5" />}
-          إرسال الطلب عبر واتساب
+          {busy ? <Loader2 className="size-5 animate-spin" /> : <CheckCircle2 className="size-5" />}
+          تأكيد الطلب
         </button>
       </div>
     </form>
