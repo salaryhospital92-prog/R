@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   ArrowRight, Trash2, Loader2, CheckCircle2, MessageCircle, Truck, ImageOff, Plus, Minus,
+  Copy, Check, Phone,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
 import { buildOrderMessage, whatsappUrl, storePhoneConfigured } from '../../lib/whatsapp'
 import ContactCard from '../../components/ContactCard'
+import { STORE, telUrl } from '../../lib/store'
 
 export default function Checkout() {
   const cart = useCart()
@@ -19,7 +21,7 @@ export default function Checkout() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)   // ردّ create_order بعد النجاح
-  const opened = useRef(false)
+  const [copied, setCopied] = useState(false)
 
   const ids = Object.keys(cart.items)
   const isWholesale = cart.mode === 'wholesale'
@@ -37,13 +39,6 @@ export default function Checkout() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids.length])
-
-  // فتح واتساب تلقائياً بعد نجاح الحفظ — والزر أدناه بديل إن منع المتصفح الفتح
-  useEffect(() => {
-    if (!result || opened.current) return
-    opened.current = true
-    window.location.href = whatsappUrl(buildOrderMessage(result))
-  }, [result])
 
   if (!cart.mode) return <Navigate to="/" replace />
 
@@ -97,17 +92,48 @@ export default function Checkout() {
           </div>
         </div>
 
-        <p className="animate-fade-up text-sm text-ink-600" style={{ animationDelay: '140ms' }}>
-          أرسل الطلب عبر واتساب ليصل المتجر ويتواصلوا معك.
+        <p className="animate-fade-up rounded-2xl bg-brand-50 p-3 text-sm font-bold leading-relaxed text-brand-900" style={{ animationDelay: '140ms' }}>
+          طلبك وصل المتجر ومسجَّل باسمك — سيتصل بك المجهِّز على الرقم الذي كتبته.
+          <span className="mt-1 block font-normal text-ink-700">
+            وإن أحببت تأكيده بنفسك، اختر ما يناسبك:
+          </span>
         </p>
 
         <a
           href={whatsappUrl(buildOrderMessage(result))}
+          target="_blank" rel="noreferrer"
           className="animate-fade-up flex items-center justify-center gap-2 rounded-2xl bg-brand-700 py-3.5 text-[17px] font-extrabold text-white shadow-[0_10px_24px_-10px_rgb(4_120_87/0.6)] active:scale-95"
           style={{ animationDelay: '200ms' }}
         >
-          <MessageCircle className="size-5" /> إرسال الطلب عبر واتساب
+          <MessageCircle className="size-5" /> إرسال نسخة عبر واتساب
         </a>
+
+        <div className="animate-fade-up grid grid-cols-2 gap-2" style={{ animationDelay: '240ms' }}>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(buildOrderMessage(result))
+                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500) })
+                .catch(() => setCopied(false))
+            }}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ink-100 text-sm font-extrabold text-ink-900 active:scale-95"
+          >
+            {copied ? <Check className="size-4 text-brand-700" /> : <Copy className="size-4" />}
+            {copied ? 'نُسخ النص' : 'نسخ نص الطلب'}
+          </button>
+          <a
+            href={telUrl()}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-ink-100 text-sm font-extrabold text-ink-900 active:scale-95"
+          >
+            <Phone className="size-4" /> اتصال بالمتجر
+          </a>
+        </div>
+
+        <p aria-live="polite" className="text-xs leading-relaxed text-ink-600">
+          {copied
+            ? `نُسخ نص الطلب — الصقه في أي تطبيق وأرسله إلى ${STORE.phone}.`
+            : 'إن كان في هاتفك واتساب عادي وواتساب أعمال، سيسألك الهاتف أيّهما تستعمل. وإن لم يفتح، انسخ النص وأرسله بأي طريقة.'}
+        </p>
 
         <Link to="/" className="text-sm font-semibold text-ink-600">العودة للمتجر</Link>
         <ContactCard className="mt-2 text-start" />

@@ -816,7 +816,7 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
         const p = term ? await findProduct(term) : null
         if (!p) return ask(chat, '❌ لم أجد منتجاً مطابقاً.')
         const { data: pr } = await db.from('product_prices').select('price_retail').eq('product_id', p.id).maybeSingle()
-        await step('itemQty', { cur: { id: p.id, name: p.name, price: pr?.price_retail ?? 0, stock: p.quantity_single } })
+        await step('itemQty', { cur: { id: p.id, code: p.code, barcode: (p as any).barcode, name: p.name, price: pr?.price_retail ?? 0, stock: p.quantity_single } })
         return ask(chat, `🧾 <b>${p.name}</b> — ${iqd(pr?.price_retail ?? 0)} للقطعة\nالمتوفر: ${p.quantity_single}\n\nأرسل <b>عدد القطع</b>.`, [cancelRow()])
       }
       if (st.step === 'itemQty') {
@@ -994,7 +994,8 @@ async function finishInvoice(chat: number, d: any, payment: string, agent: Agent
     subtotal, delivery_fee: 0, total_amount: subtotal,
     delivery_zone: 'بيع مباشر في المحل', source: 'pos', payment,
     items_json: items.map((i: any) => ({
-      product_id: i.id, name: i.name, qty: i.qty,
+      product_id: i.id, code: i.code ?? null, barcode: i.barcode ?? null,
+      name: i.name, qty: i.qty,
       unit_price: i.price, line_total: i.qty * i.price, price_on_request: i.price === 0,
     })),
   }).select('id, order_number').single()
@@ -1009,7 +1010,8 @@ async function finishInvoice(chat: number, d: any, payment: string, agent: Agent
   }
 
   const lines = items.map((i: any, n: number) =>
-    `${n + 1}. ${i.name} — ${i.qty} × ${iqd(i.price)} = ${iqd(i.qty * i.price)}`).join('\n')
+    `${n + 1}. ${i.name} — ${i.qty} × ${iqd(i.price)} = ${iqd(i.qty * i.price)}` +
+    (i.code ? `\n   <code>${i.code}</code>` : '')).join('\n')
 
   void agent
   return screen(chat,
@@ -1045,9 +1047,12 @@ async function showOrder(chat: number, id: string, admin: boolean) {
   if (!o) return screen(chat, '❌ لم أجد الطلب.', [backRow()])
 
   const items = (o.items_json ?? []) as any[]
+  // سطر الهوية تحت كل بند: الرمز يفتح صفحة المنتج بصورته، والباركود مطبوع على العلبة.
+  // الطلبات القديمة بلا رمز — يُحذف السطر عندها فقط.
   const lines = items.map((i: any, n: number) =>
     `${n + 1}. ${i.name} — ${o.mode === 'wholesale' && i.qty % 12 === 0 ? `${i.qty / 12} درزن` : `${i.qty} قطعة`}` +
-    (i.price_on_request ? ' — ⚠️ يُحدَّد عند التأكيد' : ` = ${iqd(i.line_total)}`)).join('\n')
+    (i.price_on_request ? ' — ⚠️ يُحدَّد عند التأكيد' : ` = ${iqd(i.line_total)}`) +
+    (i.code ? `\n   <code>${i.code}</code>${i.barcode ? ` · <code>${i.barcode}</code>` : ''}` : '')).join('\n')
 
   const unpriced = items.filter((i: any) => i.price_on_request)
   const phone = String(o.customer_phone ?? '').replace(/\D/g, '').replace(/^0/, '964')
@@ -1060,6 +1065,9 @@ async function showOrder(chat: number, id: string, admin: boolean) {
   })
 
   const buttons: Row[] = [
+    // زر لكل بند يفتح صفحته بصورته — أسرع تمييز بين المتشابهات
+    ...items.filter((i: any) => STORE_URL && i.code).map((i: any) =>
+      [[`🔎 ${i.name}`, `${STORE_URL}/p/${i.code}`]] as Row),
     ...unpriced.map((i: any, n: number) => [[`🏷 تسعير: ${i.name}`, `pick:${n}`]] as Row),
     [['🟠 مؤكد', `ost:${o.id}:confirmed`], ['🟢 مُسلَّم', `ost:${o.id}:delivered`]],
     [['🔴 إلغاء الطلب', `ost:${o.id}:cancelled`]],
@@ -1260,7 +1268,7 @@ function parseQty(text: string): { dozen: number; singles: number } | null {
 async function findProduct(term: string) {
   const q = term.trim()
   if (!q) return null
-  const cols = 'id, code, name, quantity_single, sold_by, price_unit, is_featured'
+  const cols = 'id, code, barcode, name, quantity_single, sold_by, price_unit, is_featured'
   const { data: byCode } = await db.from('products').select(cols).eq('barcode', q).maybeSingle()
   if (byCode) return byCode
   // رمز صفحة المنتج القصير يصلح للبحث أيضاً

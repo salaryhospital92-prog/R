@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Loader2, Phone, MapPin, ChevronDown, Package, MessageCircle, AlertTriangle, Tag,
+  ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
@@ -166,6 +167,23 @@ export default function Orders() {
                                 {it.price_on_request ? 'يُحدَّد عند التأكيد' : formatIQD(it.line_total)}
                               </span>
                             </div>
+
+                            {/* هوية البند: أسماء كثيرة متطابقة، والرمز والباركود يفصلان بينها */}
+                            {it.code && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                <a
+                                  href={`/p/${it.code}`} target="_blank" rel="noreferrer"
+                                  className="inline-flex min-h-6 items-center gap-1 rounded-lg bg-ink-900 px-2 py-1 font-extrabold text-white"
+                                >
+                                  <ExternalLink className="size-3" /> {it.code}
+                                </a>
+                                {it.barcode && (
+                                  <span className="rounded-lg bg-ink-100 px-2 py-1 font-bold tabular-nums text-ink-700">
+                                    {it.barcode}
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             {it.price_on_request && (
                               <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 p-2">

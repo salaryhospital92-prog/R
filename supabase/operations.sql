@@ -599,3 +599,197 @@ exception when duplicate_object then null; end $$;
 
 -- تعبئة أولية من وحدة البيع الحالية حتى لا يتغيّر أي عرض عند الترقية
 update public.products set price_unit = sold_by where price_unit is distinct from sold_by;
+
+
+-- ---------------------------------------------------------------------
+-- 14) تمييز البنود المتشابهة عند التجهيز
+--     عشرة منتجات تحمل أسماء متطابقة («واقي شمس ☀» مرّتين مثلاً). كانت لقطة
+--     البند تحمل product_id فقط — رقم طويل لا يُقرأ في رسالة — فلا يعرف
+--     المجهِّز أيّ نوع يأخذ من الرفّ. الآن كل بند يحمل رمزه القصير وباركوده.
+-- ---------------------------------------------------------------------
+insert into public.app_settings (key, value, updated_at)
+values ('store_url', 'https://alrifai.shop', now())
+on conflict (key) do update set value = excluded.value, updated_at = now();
+
+create or replace function public.create_order(
+  p_customer_name  text,
+  p_customer_phone text,
+  p_items          jsonb,
+  p_mode           text default 'retail',
+  p_zone_id        int  default null,
+  p_note           text default null
+)
+returns jsonb language plpgsql security definer set search_path = public as $fn$
+declare
+  v_item  jsonb;
+  v_line  jsonb;
+  v_id    uuid;
+  v_qty   int;
+  v_price bigint;
+  v_name  text;
+  v_code  text;
+  v_bar   text;
+  v_stock int;
+  v_sub   bigint := 0;
+  v_fee   bigint := 0;
+  v_zone  text;
+  v_ask   boolean := false;
+  v_lines jsonb  := '[]'::jsonb;
+  v_order public.orders;
+begin
+  if p_mode is null or p_mode not in ('retail', 'wholesale') then
+    raise exception 'نوع البيع غير صالح';
+  end if;
+
+  if p_zone_id is not null then
+    select name, fee into v_zone, v_fee
+      from public.delivery_zones where id = p_zone_id and is_active;
+    if v_zone is null then
+      raise exception 'منطقة التوصيل غير متاحة';
+    end if;
+  else
+    raise exception 'الرجاء اختيار منطقة التوصيل';
+  end if;
+
+  if p_customer_name is null or length(trim(p_customer_name)) < 2 then
+    raise exception 'الرجاء إدخال اسم الزبون';
+  end if;
+  if p_customer_phone is null or length(regexp_replace(p_customer_phone, '\D', '', 'g')) < 10 then
+    raise exception 'الرجاء إدخال رقم هاتف صحيح';
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array'
+     or jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 50 then
+    raise exception 'قائمة المنتجات غير صالحة';
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    begin
+      v_id := (v_item->>'product_id')::uuid;
+    exception when others then
+      raise exception 'معرّف منتج غير صالح';
+    end;
+
+    v_qty := (v_item->>'qty')::int;
+    if v_qty is null or v_qty <= 0 or v_qty > 1000 then
+      raise exception 'كمية غير صالحة';
+    end if;
+
+    -- السعر يُقرأ من قاعدة البيانات حسب وضع البيع، لا من السلة
+    select case when p_mode = 'wholesale' then pr.price_wholesale else pr.price_retail end,
+           p.name, p.code, p.barcode, p.quantity_single
+      into v_price, v_name, v_code, v_bar, v_stock
+      from public.products p
+      join public.product_prices pr on pr.product_id = p.id
+     where p.id = v_id and p.is_active = true;
+
+    if v_price is null then
+      raise exception 'أحد المنتجات لم يعد متوفراً في المتجر';
+    end if;
+    if v_stock < v_qty then
+      raise exception 'الكمية المطلوبة من «%» غير متوفرة (المتوفر: % قطعة)', v_name, v_stock;
+    end if;
+
+    if v_price = 0 then v_ask := true; end if;
+
+    v_sub := v_sub + v_price * v_qty;
+    v_lines := v_lines || jsonb_build_object(
+      'product_id',       v_id,
+      'code',             v_code,   -- رمز صفحة المنتج: يميّز المتشابهات
+      'barcode',          v_bar,    -- ما هو مطبوع على العلبة في الرفّ
+      'name',             v_name,
+      'qty',              v_qty,
+      'unit_price',       v_price,
+      'line_total',       v_price * v_qty,
+      'price_on_request', (v_price = 0));
+  end loop;
+
+  insert into public.orders (customer_name, customer_phone, mode, subtotal,
+                             delivery_zone, delivery_fee, customer_note,
+                             total_amount, items_json)
+  values (trim(p_customer_name), trim(p_customer_phone), p_mode, v_sub,
+          v_zone, v_fee, nullif(trim(coalesce(p_note, '')), ''),
+          v_sub + v_fee, v_lines)
+  returning * into v_order;
+
+  for v_line in select * from jsonb_array_elements(v_lines) loop
+    insert into public.stock_movements
+      (product_id, type, singles_qty, source, order_id, note)
+    values ((v_line->>'product_id')::uuid, 'sale', -(v_line->>'qty')::int,
+            'order', v_order.id, 'طلب #' || v_order.order_number);
+  end loop;
+
+  return jsonb_build_object(
+    'order_id',          v_order.id,
+    'order_number',      v_order.order_number,
+    'mode',              v_order.mode,
+    'subtotal',          v_order.subtotal,
+    'delivery_zone',     v_order.delivery_zone,
+    'delivery_fee',      v_order.delivery_fee,
+    'total_amount',      v_order.total_amount,
+    'has_price_request', v_ask,
+    'items',             v_order.items_json);
+end $fn$;
+
+revoke all on function public.create_order(text, text, jsonb, text, int, text) from public;
+grant execute on function public.create_order(text, text, jsonb, text, int, text) to anon, authenticated;
+
+
+-- إشعار التيليغرام يحمل رابط كل منتج وباركوده ليفتحه المجهِّز ويرى صورته
+create or replace function public.notify_new_order()
+returns trigger language plpgsql security definer
+set search_path = public, extensions as $fn$
+declare
+  v_token text; v_chat text; v_site text;
+  v_line jsonb; v_items text := ''; v_qty text; v_i int := 0;
+begin
+  select value into v_token from public.app_settings where key = 'telegram_bot_token';
+  select value into v_chat  from public.app_settings where key = 'telegram_chat_id';
+  select value into v_site  from public.app_settings where key = 'store_url';
+  if coalesce(v_token, '') = '' or coalesce(v_chat, '') = '' then
+    return new;
+  end if;
+
+  for v_line in select * from jsonb_array_elements(new.items_json) loop
+    v_i := v_i + 1;
+    v_qty := case when new.mode = 'wholesale' and (v_line->>'qty')::int % 12 = 0
+                  then to_char((v_line->>'qty')::int / 12, 'FM999,999') || ' درزن'
+                  else to_char((v_line->>'qty')::int, 'FM999,999') || ' قطعة' end;
+
+    v_items := v_items || v_i || '. ' || (v_line->>'name') || ' — ' || v_qty ||
+      case when (v_line->>'price_on_request')::boolean then ' — السعر عند الطلب'
+           else ' = ' || to_char((v_line->>'line_total')::bigint, 'FM999,999,999') || ' د.ع' end
+      || E'\n';
+
+    -- سطر التمييز: الرابط يفتح صورة المنتج، والباركود مطبوع على العلبة
+    if (v_line->>'code') is not null then
+      v_items := v_items || '   🔗 ' || coalesce(v_site, '') || '/p/' || (v_line->>'code');
+      if (v_line->>'barcode') is not null then
+        v_items := v_items || '  ·  ' || (v_line->>'barcode');
+      end if;
+      v_items := v_items || E'\n';
+    end if;
+  end loop;
+
+  perform net.http_post(
+    url     := 'https://api.telegram.org/bot' || v_token || '/sendMessage',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body    := jsonb_build_object(
+      'chat_id', v_chat,
+      'disable_web_page_preview', true,
+      'text',
+        '🛒 طلب جديد #' || new.order_number || E'\n' ||
+        'النوع: ' || case when new.mode = 'wholesale' then 'جملة' else 'مفرد' end || E'\n' ||
+        'الزبون: ' || new.customer_name || E'\n' ||
+        'الهاتف: ' || new.customer_phone || E'\n' ||
+        'المنطقة: ' || coalesce(new.delivery_zone, '—') || E'\n' ||
+        coalesce('ملاحظة: ' || new.customer_note || E'\n', '') || E'\n' ||
+        v_items || E'\n' ||
+        'البضاعة: ' || to_char(new.subtotal, 'FM999,999,999') || ' د.ع' || E'\n' ||
+        'التوصيل: ' || to_char(new.delivery_fee, 'FM999,999,999') || ' د.ع' || E'\n' ||
+        '💰 المجموع: ' || to_char(new.total_amount, 'FM999,999,999') || ' د.ع'
+    )
+  );
+  return new;
+exception when others then
+  return new;
+end $fn$;
