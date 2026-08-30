@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, Loader2, ChevronLeft, Search } from 'lucide-react'
+import { ShoppingCart, Loader2, ChevronLeft, Search, Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
@@ -9,6 +9,7 @@ import AdCarousel from '../../components/AdCarousel'
 import CategoryTile from '../../components/CategoryTile'
 import ProductCard from '../../components/ProductCard'
 import ContactCard, { FloatingWhatsapp } from '../../components/ContactCard'
+import SideMenu from '../../components/SideMenu'
 
 const TABS = [
   { k: 'new', t: 'وصل حديثاً' },
@@ -28,6 +29,8 @@ export default function Home() {
   const [autoTab, setAutoTab] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [menu, setMenu] = useState(false)
+  const menuBtn = useRef(null)
 
   useEffect(() => {
     Promise.all([
@@ -88,9 +91,18 @@ export default function Home() {
 
   return (
     <div className="min-h-dvh pb-28">
+      <SideMenu open={menu} onClose={() => setMenu(false)} returnFocusTo={menuBtn} />
+
       {/* ------------------------------- الرأس ------------------------------- */}
       <header className="surface-ink sticky top-0 z-30">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pb-3 pt-4">
+          <button
+            ref={menuBtn} type="button" onClick={() => setMenu(true)}
+            aria-label="فتح القائمة" aria-expanded={menu} aria-haspopup="dialog"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20"
+          >
+            <Menu className="size-5" />
+          </button>
           <img src={asset('logo-mark.png')} alt="" className="size-10 shrink-0" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[17px] font-extrabold leading-tight">{STORE.name}</h1>

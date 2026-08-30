@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X } from 'lucide-react'
+import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X, Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
 import { STORE, asset, contactWhatsappUrl, telUrl } from '../../lib/store'
 import ProductCard from '../../components/ProductCard'
 import ContactCard, { FloatingWhatsapp } from '../../components/ContactCard'
+import SideMenu from '../../components/SideMenu'
 
 export default function Catalog({ mode }) {
   const navigate = useNavigate()
@@ -28,6 +29,8 @@ export default function Catalog({ mode }) {
   const setQuery = (v) => patch({ q: v })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [menu, setMenu] = useState(false)
+  const menuBtn = useRef(null)
 
   // الرابط هو مصدر الحقيقة للوضع: /wholesale أو /retail
   useEffect(() => { cart.setMode(mode) }, [mode, cart])
@@ -69,13 +72,23 @@ export default function Catalog({ mode }) {
 
   return (
     <div className="min-h-dvh pb-28">
+      <SideMenu open={menu} onClose={() => setMenu(false)} returnFocusTo={menuBtn} />
+
       <header className="sticky top-0 z-30">
         {/* شريط الحبر: توقيع النظام، ولونه مأخوذ من الشعار نفسه (#1E2A38) */}
         <div className="surface-ink">
           <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pb-3 pt-4">
-            <Link to="/" className="rounded-xl p-1.5 transition hover:bg-white/10" aria-label="رجوع للصفحة الأولى">
+            <Link to="/" className="flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-white/10" aria-label="رجوع للصفحة الأولى">
               <ChevronRight className="size-5" />
             </Link>
+            <button
+              ref={menuBtn} type="button" onClick={() => setMenu(true)}
+              aria-label="فتح القائمة" aria-expanded={menu} aria-haspopup="dialog"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20"
+            >
+              <Menu className="size-5" />
+            </button>
+
             <img src={asset('logo-mark.png')} alt="" className="size-9" />
             <div className="min-w-0">
               <p className="text-[15px] font-extrabold leading-tight">{STORE.name}</p>

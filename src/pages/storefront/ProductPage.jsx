@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronRight, Loader2, ImageOff, Plus, Minus, ShoppingCart, MessageCircle,
-  Share2, Check, PackageSearch, Truck,
+  Share2, Check, PackageSearch, Truck, Menu,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
 import { STORE, contactWhatsappUrl, asset } from '../../lib/store'
 import ContactCard from '../../components/ContactCard'
+import SideMenu from '../../components/SideMenu'
 
 /** صفحة منتج مستقلة — رابطها قصير ويُرسل مباشرة للزبون */
 export default function ProductPage() {
@@ -20,6 +21,8 @@ export default function ProductPage() {
   const [qty, setQty] = useState(0)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [menu, setMenu] = useState(false)
+  const menuBtn = useRef(null)
 
   useEffect(() => {
     supabase.from('storefront_products').select('*').eq('code', code.toUpperCase()).maybeSingle()
@@ -87,9 +90,18 @@ export default function ProductPage() {
 
   return (
     <div className="min-h-dvh pb-32">
+      <SideMenu open={menu} onClose={() => setMenu(false)} returnFocusTo={menuBtn} />
+
       <header className="glass sticky top-0 z-30 flex items-center gap-2 p-3">
-        <button onClick={() => navigate(-1)} className="rounded-xl p-1.5 hover:bg-ink-100" aria-label="رجوع">
+        <button onClick={() => navigate(-1)} className="flex size-10 items-center justify-center rounded-xl hover:bg-ink-100" aria-label="رجوع">
           <ChevronRight className="size-5" />
+        </button>
+        <button
+          ref={menuBtn} type="button" onClick={() => setMenu(true)}
+          aria-label="فتح القائمة" aria-expanded={menu} aria-haspopup="dialog"
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl hover:bg-ink-100"
+        >
+          <Menu className="size-5" />
         </button>
         <Link to="/" className="flex min-w-0 items-center gap-2">
           <img src={asset('logo-mark.png')} alt="" className="size-8" />
