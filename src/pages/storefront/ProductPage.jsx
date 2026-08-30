@@ -150,8 +150,8 @@ export default function ProductPage() {
                 <p className="text-lg font-extrabold text-warn-600">السعر يُحدَّد عند التأكيد</p>
               ) : (
                 <>
-                  <p className="tnum text-[30px] font-extrabold leading-none tracking-tight text-brand-800">{formatIQD(price)}</p>
-                  <p className="text-xs text-ink-600">
+                  <p className="price-xl text-brand-800">{formatIQD(price)}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-600">
                     للقطعة {byDozen && `· الدرزن ${formatIQD(price * 12)}`}
                   </p>
                 </>

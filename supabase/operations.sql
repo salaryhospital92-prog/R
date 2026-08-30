@@ -580,3 +580,22 @@ with (security_invoker = off) as
    group by 1;
 
 grant select on public.popular_products to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- 13) وحدة إدخال سعر الجملة — تُحفظ لكل منتج
+--     كانت الوحدة تُشتقّ ضمناً من sold_by، فمن بيده سعر القطعة لمنتج يُباع
+--     بالدرزن لم يجد إلا خانة معنونة «سعر الدرزن» — فنشأت أخطاء ×12.
+--     الآن الوحدة صريحة ومحفوظة، و price_wholesale يبقى مخزَّناً للقطعة
+--     كما هو، فلا يتغيّر شيء في create_order ولا في حسابات المتجر.
+-- ---------------------------------------------------------------------
+alter table public.products
+  add column if not exists price_unit text not null default 'dozen';
+
+do $$ begin
+  alter table public.products add constraint products_price_unit_check
+    check (price_unit in ('dozen', 'piece'));
+exception when duplicate_object then null; end $$;
+
+-- تعبئة أولية من وحدة البيع الحالية حتى لا يتغيّر أي عرض عند الترقية
+update public.products set price_unit = sold_by where price_unit is distinct from sold_by;

@@ -60,11 +60,9 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
       <div className="flex flex-1 flex-col p-3.5">
         {/* السعر أولاً وبأكبر وزن — هو بؤرة البطاقة */}
         {onRequest ? (
-          <p className="text-[15px] font-extrabold leading-none text-warn-600">عند الطلب</p>
+          <p className="text-[15px] font-extrabold leading-[1.3] text-warn-600">عند الطلب</p>
         ) : (
-          <p className="tnum text-[19px] font-extrabold leading-none tracking-tight text-brand-800">
-            {formatIQD(price)}
-          </p>
+          <p className="price-md text-brand-800">{formatIQD(price)}</p>
         )}
         {!onRequest && mode === 'wholesale' && (
           <p className="tnum mt-1 text-[11px] text-ink-600">

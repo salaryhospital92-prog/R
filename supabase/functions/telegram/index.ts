@@ -629,40 +629,57 @@ async function runFlow(chat: number, st: State, input: Input, agent: Agent) {
         const p = term ? await findProduct(term) : null
         if (!p) return ask(chat, '❌ لم أجد منتجاً مطابقاً.')
         const { data: pr } = await db.from('product_prices').select('*').eq('product_id', p.id).maybeSingle()
-        const byDozen = (p as any).sold_by !== 'piece'
+        const unit = (p as any).price_unit ?? 'dozen'
         const w = pr?.price_wholesale ?? 0
-        await step('retail', { productId: p.id, productName: p.name, byDozen })
+        await step('unit', { productId: p.id, productName: p.name, unit, curRetail: pr?.price_retail ?? 0, curPiece: w })
         return ask(chat,
           `💵 <b>${p.name}</b>\n` +
-          `🏷 المفرد الحالي: ${iqd(pr?.price_retail ?? 0)}\n` +
-          (byDozen
-            ? `📦 الدرزن الحالي: ${iqd(w * 12)} (${iqd(w)} للقطعة)\n`
-            : `📦 الجملة الحالية: ${iqd(w)} للقطعة\n`) +
-          `\nأرسل <b>سعر المفرد</b> الجديد.`,
+          `🏷 المفرد الحالي: ${iqd(pr?.price_retail ?? 0)} للقطعة\n` +
+          `📦 الجملة الحالية: ${iqd(w * 12)} للدرزن · ${iqd(w)} للقطعة\n\n` +
+          `<b>سعر الجملة الذي ستكتبه — هو سعر ماذا؟</b>\n` +
+          `الوحدة المحفوظة لهذا المنتج: ${unit === 'dozen' ? 'الدرزن' : 'القطعة'}`,
+          [[['📦 سعر الدرزن (12 قطعة)', 'pick:dozen']],
+           [['🔢 سعر القطعة الواحدة', 'pick:piece']],
+           cancelRow()])
+      }
+
+      if (st.step === 'unit') {
+        if (!input.pick) return ask(chat, 'اختر الوحدة من الأزرار.')
+        await step('retail', { unit: input.pick })
+        return ask(chat,
+          `الوحدة: <b>${input.pick === 'dozen' ? 'سعر الدرزن' : 'سعر القطعة'}</b>\n\n` +
+          `أرسل <b>سعر المفرد</b> (للقطعة).`,
           [cancelRow()])
       }
       if (st.step === 'retail') {
         const v = num(t)
         if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
         await step('wholesale', { retail: v })
-        return ask(chat, d.byDozen === false
-          ? 'أرسل <b>سعر الجملة للقطعة</b>.'
-          : 'أرسل <b>سعر الدرزن</b> (ثمن 12 قطعة — يُقسَّم على 12 تلقائياً).', [cancelRow()])
+        return ask(chat, d.unit === 'piece'
+          ? 'أرسل <b>سعر القطعة بالجملة</b>.'
+          : 'أرسل <b>سعر الدرزن</b> (ثمن 12 قطعة).', [cancelRow()])
       }
       if (st.step === 'wholesale') {
         const v = num(t)
         if (isNaN(v)) return ask(chat, 'أرسل رقماً.')
-        const wholesale = d.byDozen === false ? v : Math.round(v / 12)
-        const { error } = await db.from('product_prices').upsert({
-          product_id: d.productId, price_retail: d.retail, price_wholesale: wholesale,
-          updated_at: new Date().toISOString(),
-        })
-        if (error) return screen(chat, '⚠️ تعذّر الحفظ.', [backRow()])
+        const wholesale = d.unit === 'piece' ? v : Math.round(v / 12)
+        const [{ error }, { error: e2 }] = await Promise.all([
+          db.from('product_prices').upsert({
+            product_id: d.productId, price_retail: d.retail, price_wholesale: wholesale,
+            updated_at: new Date().toISOString(),
+          }),
+          db.from('products').update({ price_unit: d.unit }).eq('id', d.productId),
+        ])
+        if (error || e2) return screen(chat, '⚠️ تعذّر الحفظ.', [backRow()])
+
+        const warn = wholesale >= d.retail && d.retail > 0
+          ? '\n\n⚠️ سعر الجملة للقطعة ليس أقل من المفرد — راجع الوحدة المختارة.'
+          : ''
         return screen(chat,
-          `✅ <b>${d.productName}</b>\n\n🏷 المفرد: <b>${iqd(d.retail)}</b>\n` +
-          (d.byDozen === false
-            ? `📦 الجملة: <b>${iqd(wholesale)}</b> للقطعة`
-            : `📦 الدرزن: <b>${iqd(v)}</b> (${iqd(wholesale)} للقطعة)`),
+          `✅ <b>${d.productName}</b>\n\n` +
+          `🏷 المفرد: <b>${iqd(d.retail)}</b> للقطعة\n` +
+          `📦 الجملة: <b>${iqd(wholesale * 12)}</b> للدرزن · <b>${iqd(wholesale)}</b> للقطعة\n` +
+          `🧭 الوحدة المحفوظة: ${d.unit === 'dozen' ? 'الدرزن' : 'القطعة'}` + warn,
           [[['💵 تسعير منتج آخر', 'f:setPrice']], backRow()])
       }
       break
@@ -1243,7 +1260,7 @@ function parseQty(text: string): { dozen: number; singles: number } | null {
 async function findProduct(term: string) {
   const q = term.trim()
   if (!q) return null
-  const cols = 'id, code, name, quantity_single, sold_by, is_featured'
+  const cols = 'id, code, name, quantity_single, sold_by, price_unit, is_featured'
   const { data: byCode } = await db.from('products').select(cols).eq('barcode', q).maybeSingle()
   if (byCode) return byCode
   // رمز صفحة المنتج القصير يصلح للبحث أيضاً
@@ -1315,10 +1332,10 @@ async function quickSearch(chat: number, term: string, admin: boolean) {
   if (admin) {
     const { data: pr } = await db.from('product_prices').select('*').eq('product_id', p.id).maybeSingle()
     const w = pr?.price_wholesale ?? 0
-    extra = `\n🏷 المفرد: ${iqd(pr?.price_retail ?? 0)}\n` +
-      ((p as any).sold_by === 'piece'
-        ? `📦 الجملة: ${iqd(w)} للقطعة`
-        : `📦 الدرزن: ${iqd(w * 12)} (${iqd(w)} للقطعة)`)
+    const unit = (p as any).price_unit ?? 'dozen'
+    extra = `\n🏷 المفرد: ${iqd(pr?.price_retail ?? 0)} للقطعة\n` +
+      `📦 الجملة: ${iqd(w * 12)} للدرزن · ${iqd(w)} للقطعة` +
+      `\n🧭 الوحدة: ${unit === 'dozen' ? 'الدرزن' : 'القطعة'}`
   }
   return screen(chat,
     `📦 <b>${p.name}</b>${(p as any).is_featured ? ' ⭐' : ''}\n📊 الرصيد: <b>${p.quantity_single}</b> قطعة${extra}` +

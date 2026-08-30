@@ -120,6 +120,20 @@ body {
 /* الأرقام في الأسعار والكميات تصطف عمودياً للمقارنة السريعة */
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------------------
+   مقاييس السعر بالعربية — النازلات (ع ق م) ترسم خارج صندوق السطر، فسطرٌ
+   بارتفاع حجم الخط (leading-none) يجعلها تركب على السطر التالي.
+   الحد الأدنى الآمن هنا 1.28.
+   --------------------------------------------------------------------- */
+@utility price-xl {
+  @apply text-[30px] font-extrabold leading-[1.28] tracking-tight;
+  font-variant-numeric: tabular-nums;
+}
+@utility price-md {
+  @apply text-[19px] font-extrabold leading-[1.3] tracking-tight;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

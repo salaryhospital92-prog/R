@@ -23,8 +23,8 @@ export default function Products() {
     setLoading(true)
     // موظف الإدخال لا يطلب الأسعار إطلاقاً — والخادم لا يعطيه إياها أصلاً (RLS)
     const select = isAdmin
-      ? 'id, barcode, name, image_url, quantity_single, category_id, sold_by, categories(name), product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, image_url, quantity_single, category_id, sold_by, categories(name)'
+      ? 'id, barcode, name, image_url, quantity_single, category_id, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, image_url, quantity_single, category_id, sold_by, price_unit, categories(name)'
 
     const [p, c] = await Promise.all([
       supabase.from('products').select(select).order('created_at', { ascending: false }).limit(200),
@@ -127,9 +127,12 @@ export default function Products() {
                     <p className="mt-0.5 text-xs text-brand-700">
                       مفرد: {p.product_prices.price_retail > 0 ? formatIQD(p.product_prices.price_retail) : 'عند الطلب'}
                       {' · '}
-                      {p.sold_by === 'piece' ? 'جملة' : 'الدرزن'}:{' '}
+                      جملة{' '}
+                      <span className="rounded-full bg-ink-200 px-1.5 py-px text-[9px] font-extrabold text-ink-800">
+                        {(p.price_unit ?? 'dozen') === 'dozen' ? 'درزن' : 'قطعة'}
+                      </span>{' '}
                       {p.product_prices.price_wholesale > 0
-                        ? formatIQD(p.product_prices.price_wholesale * (p.sold_by === 'piece' ? 1 : 12))
+                        ? formatIQD(p.product_prices.price_wholesale * ((p.price_unit ?? 'dozen') === 'dozen' ? 12 : 1))
                         : 'عند الطلب'}
                     </p>
                   )}

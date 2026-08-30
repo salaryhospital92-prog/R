@@ -30,6 +30,7 @@ export default function ProductEditor() {
     image_url: '',
     quantity_single: 0,
     sold_by: 'dozen',
+    price_unit: 'dozen',
     is_featured: false,
   })
   const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
@@ -46,8 +47,18 @@ export default function ProductEditor() {
   const [done, setDone] = useState('')
 
   const added = totalUnits(dozens, singles)
-  const byDozen = form.sold_by !== 'piece'
-  const wholesalePerPiece = Math.round((Number(prices.price_wholesale) || 0) / (byDozen ? 12 : 1))
+  // وحدة إدخال سعر الجملة — مستقلّة عن وحدة البيع عمداً:
+  // الأولى «كيف تكتب السعر»، والثانية «كيف يشتري الزبون».
+  const priceByDozen = form.price_unit !== 'piece'
+  const wholesalePerPiece = Math.round((Number(prices.price_wholesale) || 0) / (priceByDozen ? 12 : 1))
+
+  /** تبديل الوحدة يحوّل الرقم ولا يغيّر السعر الحقيقي */
+  const switchPriceUnit = (unit) => {
+    if (unit === form.price_unit) return
+    const piece = Math.round((Number(prices.price_wholesale) || 0) / (priceByDozen ? 12 : 1))
+    setForm({ ...form, price_unit: unit })
+    setPrices({ ...prices, price_wholesale: String(unit === 'dozen' ? piece * 12 : piece) })
+  }
 
   useEffect(() => {
     supabase.from('categories').select('id, name').order('sort_order')
@@ -57,8 +68,8 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, is_featured, product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, is_featured'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
       if (error || !data) {
@@ -71,14 +82,15 @@ export default function ProductEditor() {
           image_url: data.image_url ?? '',
           quantity_single: data.quantity_single,
           sold_by: data.sold_by ?? 'dozen',
+          price_unit: data.price_unit ?? 'dozen',
           is_featured: data.is_featured ?? false,
         })
         if (data.product_prices) {
           setPrices({
             price_retail: String(data.product_prices.price_retail ?? 0),
-            // الجملة تُخزَّن للقطعة وتُعرض بالدرزن — لغة السوق
+            // الجملة تُخزَّن للقطعة وتُعرض بوحدة المنتج المحفوظة
             price_wholesale: String((data.product_prices.price_wholesale ?? 0)
-              * ((data.sold_by ?? 'dozen') === 'piece' ? 1 : 12)),
+              * ((data.price_unit ?? 'dozen') === 'piece' ? 1 : 12)),
           })
         }
       }
@@ -123,6 +135,7 @@ export default function ProductEditor() {
         name: form.name.trim(),
         category_id: Number(form.category_id),
         sold_by: form.sold_by,
+        price_unit: form.price_unit,
         is_featured: form.is_featured,
       }
 
@@ -158,7 +171,7 @@ export default function ProductEditor() {
         const { error } = await supabase.from('product_prices').upsert({
           product_id: productId,
           price_retail: Math.max(0, Math.round(Number(prices.price_retail) || 0)),
-          price_wholesale: byDozen ? Math.round(entered / 12) : Math.round(entered),
+          price_wholesale: priceByDozen ? Math.round(entered / 12) : Math.round(entered),
           updated_at: new Date().toISOString(),
         })
         if (error) throw error
@@ -371,18 +384,40 @@ export default function ProductEditor() {
         <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-white p-4">
           <p className="col-span-2 text-sm font-semibold">الأسعار (د.ع) — تظهر للمدير فقط</p>
           <div>
-            <label className={label} htmlFor="retail">سعر المفرد</label>
+            <label className={label} htmlFor="retail">سعر المفرد — للقطعة</label>
             <input id="retail" type="number" min="0" inputMode="numeric" value={prices.price_retail} onChange={(e) => setPrices({ ...prices, price_retail: e.target.value })} placeholder="0" className={field} />
           </div>
           <div>
             <label className={label} htmlFor="wholesale">
-              {byDozen ? 'سعر الدرزن (12 قطعة)' : 'الجملة — للقطعة'}
+              سعر الجملة — {priceByDozen ? 'سعر الدرزن' : 'سعر القطعة'}
             </label>
             <input id="wholesale" type="number" min="0" inputMode="numeric" value={prices.price_wholesale} onChange={(e) => setPrices({ ...prices, price_wholesale: e.target.value })} placeholder="0" className={field} />
           </div>
-          {byDozen && Number(prices.price_wholesale) > 0 && (
+
+          <div className="col-span-2">
+            <span className="mb-1 block text-[11px] font-bold text-ink-600">الرقم أعلاه هو:</span>
+            <div role="group" aria-label="وحدة سعر الجملة" className="flex gap-1 rounded-xl bg-ink-100 p-1">
+              {[
+                { v: 'dozen', t: 'سعر الدرزن', s: '12 قطعة' },
+                { v: 'piece', t: 'سعر القطعة', s: 'قطعة واحدة' },
+              ].map((u) => (
+                <button
+                  key={u.v} type="button" onClick={() => switchPriceUnit(u.v)}
+                  aria-pressed={form.price_unit === u.v}
+                  className={`flex-1 rounded-lg py-2 text-[13px] font-extrabold transition ${
+                    form.price_unit === u.v ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-600 hover:text-ink-900'
+                  }`}
+                >
+                  {u.t}
+                  <span className="block text-[10px] font-bold opacity-70">{u.s}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {Number(prices.price_wholesale) > 0 && (
             <p className="col-span-2 rounded-lg bg-brand-50 px-3 py-2 text-center text-xs font-bold text-brand-900">
-              القطعة بالجملة = {formatNumber(wholesalePerPiece)} د.ع
+              الدرزن {formatNumber(wholesalePerPiece * 12)} د.ع · القطعة {formatNumber(wholesalePerPiece)} د.ع
             </p>
           )}
           {wholesalePerPiece > 0 && Number(prices.price_retail) > 0 && wholesalePerPiece >= Number(prices.price_retail) && (

@@ -1,18 +1,25 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Search, Save, X, Pencil, Tags, Check } from 'lucide-react'
+import { Loader2, Search, Save, X, Pencil, Tags, Check, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD } from '../../lib/format'
 
 /**
- * تسعير المنتجات. كل منتج بطاقة مستقلة تُقرأ فقط حتى تضغط «تعديل» —
- * يمنع التعديل بالخطأ، ويظهر زرّا «حفظ» و«إلغاء» للصف الجاري وحده.
- * سعر الجملة يُخزَّن للقطعة، ويُعرض معه سعر الدرزن (×12) لأنه لغة السوق.
+ * تسعير المنتجات.
+ *
+ * سعر المفرد دائماً «للقطعة» — لا وحدة له تُختار، هذا تعريفه.
+ * سعر الجملة له وحدة صريحة **محفوظة لكل منتج** (`products.price_unit`):
+ * إمّا ثمن الدرزن (12 قطعة) أو ثمن القطعة. كانت الوحدة تُشتقّ ضمناً من
+ * وحدة البيع، فمن بيده سعر القطعة لمنتج يُباع بالدرزن لم يجد إلا خانة
+ * معنونة «سعر الدرزن» — فنشأت أخطاء الضرب في 12.
+ *
+ * التخزين لا يتغيّر: `price_wholesale` يبقى سعر القطعة دائماً، والوحدة
+ * وصفٌ للإدخال والعرض فقط.
  */
 export default function Prices() {
   const [rows, setRows] = useState([])
   const [query, setQuery] = useState('')
-  const [editing, setEditing] = useState(null)     // productId
-  const [draft, setDraft] = useState({ retail: '', wholesale: '' })
+  const [editing, setEditing] = useState(null)
+  const [draft, setDraft] = useState({ retail: '', wholesale: '', unit: 'dozen' })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [savedId, setSavedId] = useState(null)
@@ -21,7 +28,7 @@ export default function Prices() {
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name, sold_by, categories(name), product_prices(price_retail, price_wholesale)')
+      .select('id, name, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)')
       .order('name')
       .then(({ data, error }) => {
         if (error) setError('تعذّر التحميل: ' + error.message)
@@ -30,37 +37,57 @@ export default function Prices() {
       })
   }, [])
 
-  // الجملة تُدخَل وتُعرض بسعر الدرزن (لغة السوق)، وتُخزَّن للقطعة (12 ÷)
-  const byDozen = (r) => r.sold_by !== 'piece'
-  const toInput = (r) => {
-    const w = r.product_prices?.price_wholesale ?? 0
-    return String(byDozen(r) ? w * 12 : w)
-  }
+  const perPiece = (r) => r.product_prices?.price_wholesale ?? 0
+  const inUnit = (pieceValue, unit) => (unit === 'dozen' ? pieceValue * 12 : pieceValue)
+  const toPiece = (entered, unit) => (unit === 'dozen' ? Math.round(entered / 12) : Math.round(entered))
 
   const startEdit = (r) => {
     setSavedId(null)
     setError('')
     setEditing(r.id)
-    setDraft({ retail: String(r.product_prices?.price_retail ?? 0), wholesale: toInput(r) })
+    const unit = r.price_unit ?? 'dozen'
+    setDraft({
+      retail: String(r.product_prices?.price_retail ?? 0),
+      wholesale: String(inUnit(perPiece(r), unit)),
+      unit,
+    })
   }
 
-  const cancel = () => { setEditing(null); setDraft({ retail: '', wholesale: '' }) }
+  const cancel = () => { setEditing(null); setDraft({ retail: '', wholesale: '', unit: 'dozen' }) }
+
+  /** تبديل الوحدة يحوّل الرقم ولا يغيّر السعر الحقيقي */
+  const switchUnit = (unit) => {
+    if (unit === draft.unit) return
+    const piece = toPiece(Number(draft.wholesale) || 0, draft.unit)
+    setDraft({ ...draft, unit, wholesale: String(inUnit(piece, unit)) })
+  }
 
   const save = async (r) => {
     setBusy(true)
     setError('')
     const entered = Math.max(0, Number(draft.wholesale) || 0)
-    const payload = {
-      product_id: r.id,
-      price_retail: Math.max(0, Number(draft.retail) || 0),
-      price_wholesale: byDozen(r) ? Math.round(entered / 12) : entered,
-      updated_at: new Date().toISOString(),
-    }
-    const { error } = await supabase.from('product_prices').upsert(payload)
-    if (error) setError('تعذّر الحفظ: ' + error.message)
+    const priceWholesale = toPiece(entered, draft.unit)
+
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('product_prices').upsert({
+        product_id: r.id,
+        price_retail: Math.max(0, Math.round(Number(draft.retail) || 0)),
+        price_wholesale: priceWholesale,
+        updated_at: new Date().toISOString(),
+      }),
+      supabase.from('products').update({ price_unit: draft.unit }).eq('id', r.id),
+    ])
+
+    if (e1 || e2) setError('تعذّر الحفظ: ' + (e1 ?? e2).message)
     else {
       setRows((list) => list.map((x) => x.id === r.id
-        ? { ...x, product_prices: { price_retail: payload.price_retail, price_wholesale: payload.price_wholesale } }
+        ? {
+            ...x, price_unit: draft.unit,
+            product_prices: {
+              price_retail: Math.max(0, Math.round(Number(draft.retail) || 0)),
+              price_wholesale: priceWholesale,
+            },
+          }
         : x))
       setSavedId(r.id)
       cancel()
@@ -82,9 +109,9 @@ export default function Prices() {
         <Tags className="size-5 text-brand-700" /> الأسعار
       </h1>
       <p className="mb-4 text-xs leading-relaxed text-ink-600">
-        <b>سعر الدرزن</b> = ثمن 12 قطعة. النظام يقسّمه على 12 ليحسب سعر القطعة
-        بالجملة. والبضاعة التي تُباع بالقطعة فقط يُدخل سعر جملتها للقطعة مباشرةً.
-        اترك السعر 0 ليظهر المنتج في المتجر بـ«السعر عند الطلب».
+        سعر المفرد دائماً <b>للقطعة</b>. أما سعر الجملة فاختر وحدته بنفسك:
+        <b> سعر الدرزن</b> (12 قطعة) أو <b>سعر القطعة</b> — والوحدة تُحفظ لكل منتج
+        فتظهر كما أدخلتها في كل مرة. اترك السعر 0 ليظهر بـ«السعر عند الطلب».
       </p>
 
       <div className="relative mb-4">
@@ -95,26 +122,31 @@ export default function Prices() {
         />
       </div>
 
-      {error && <p className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
+      {error && <p role="alert" className="mb-4 rounded-2xl bg-red-50 p-3 text-sm text-danger-700">{error}</p>}
 
       {shown.length === 0 ? (
-        <p className="card p-10 text-center text-sm text-ink-600">لا نتائج.</p>
+        <p className="surface p-10 text-center text-sm text-ink-600">لا نتائج.</p>
       ) : (
         <ul className="grid gap-2.5 sm:grid-cols-2">
           {shown.map((r) => {
             const isEditing = editing === r.id
             const retail = r.product_prices?.price_retail ?? 0
-            const wholesale = r.product_prices?.price_wholesale ?? 0
+            const piece = perPiece(r)
+            const unit = r.price_unit ?? 'dozen'
+
+            // القيمتان محسوبتان دائماً من الرقم المكتوب ووحدته — لا رقم بلا وحدة
+            const draftPiece = toPiece(Number(draft.wholesale) || 0, draft.unit)
+            const inverted = draftPiece > 0 && Number(draft.retail) > 0 && draftPiece >= Number(draft.retail)
 
             return (
-              <li key={r.id} className={`card p-4 transition ${isEditing ? 'ring-2 ring-brand-500' : ''}`}>
+              <li key={r.id} className={`surface-raised p-4 transition ${isEditing ? 'ring-2 ring-brand-700' : ''}`}>
                 <div className="mb-3 flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold leading-snug">{r.name}</p>
                     <p className="mt-0.5 text-[11px] text-ink-600">{r.categories?.name ?? '—'}</p>
                   </div>
                   {savedId === r.id && (
-                    <span className="animate-pop flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-700">
+                    <span className="animate-pop flex shrink-0 items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-800">
                       <Check className="size-3.5" /> حُفظ
                     </span>
                   )}
@@ -122,30 +154,53 @@ export default function Prices() {
 
                 {isEditing ? (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="block">
-                        <span className="mb-1 block text-[11px] font-bold text-ink-600">سعر المفرد</span>
-                        <input
-                          autoFocus inputMode="numeric" value={draft.retail}
-                          onChange={(e) => setDraft({ ...draft, retail: e.target.value.replace(/\D/g, '') })}
-                          className={field}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1 block text-[11px] font-bold text-ink-600">
-                          {byDozen(r) ? 'سعر الدرزن (12 قطعة)' : 'الجملة — للقطعة'}
-                        </span>
-                        <input
-                          inputMode="numeric" value={draft.wholesale}
-                          onChange={(e) => setDraft({ ...draft, wholesale: e.target.value.replace(/\D/g, '') })}
-                          className={field}
-                        />
-                      </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-bold text-ink-600">سعر المفرد — للقطعة</span>
+                      <input
+                        autoFocus inputMode="numeric" value={draft.retail}
+                        onChange={(e) => setDraft({ ...draft, retail: e.target.value.replace(/\D/g, '') })}
+                        className={field}
+                      />
+                    </label>
+
+                    <div className="mt-3">
+                      <span className="mb-1 block text-[11px] font-bold text-ink-600">
+                        سعر الجملة — الرقم الذي ستكتبه هو:
+                      </span>
+                      <div role="group" aria-label="وحدة سعر الجملة" className="mb-2 flex gap-1 rounded-xl bg-ink-100 p-1">
+                        {[
+                          { v: 'dozen', t: 'سعر الدرزن', s: '12 قطعة' },
+                          { v: 'piece', t: 'سعر القطعة', s: 'قطعة واحدة' },
+                        ].map((u) => (
+                          <button
+                            key={u.v} type="button" onClick={() => switchUnit(u.v)}
+                            aria-pressed={draft.unit === u.v}
+                            className={`flex-1 rounded-lg py-2 text-[13px] font-extrabold transition ${
+                              draft.unit === u.v ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-600 hover:text-ink-900'
+                            }`}
+                          >
+                            {u.t}
+                            <span className="block text-[10px] font-bold opacity-70">{u.s}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        inputMode="numeric" value={draft.wholesale}
+                        onChange={(e) => setDraft({ ...draft, wholesale: e.target.value.replace(/\D/g, '') })}
+                        aria-label={draft.unit === 'dozen' ? 'سعر الدرزن' : 'سعر القطعة بالجملة'}
+                        className={field}
+                      />
                     </div>
 
-                    {byDozen(r) && (
-                      <p className="mt-2 text-center text-[11px] text-ink-600">
-                        القطعة بالجملة = <b className="text-ink-700">{formatIQD(Math.round((Number(draft.wholesale) || 0) / 12))}</b>
+                    {/* القيمتان معاً دائماً — لا يبقى رقم مجهول الوحدة */}
+                    <p className="mt-2 rounded-lg bg-brand-50 px-2 py-1.5 text-center text-[11px] font-bold text-brand-900">
+                      الدرزن {formatIQD(draftPiece * 12)} · القطعة {formatIQD(draftPiece)}
+                    </p>
+
+                    {inverted && (
+                      <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-warn-600">
+                        <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                        سعر الجملة للقطعة ليس أقل من سعر المفرد — تأكّد من الوحدة المختارة.
                       </p>
                     )}
 
@@ -168,20 +223,26 @@ export default function Prices() {
                   <>
                     <div className="grid grid-cols-2 gap-2 text-center">
                       <div className="rounded-xl bg-ink-50 p-2.5">
-                        <p className="text-[11px] text-ink-600">المفرد</p>
-                        <p className={`text-sm font-extrabold tabular-nums ${retail ? 'text-brand-700' : 'text-warn-600'}`}>
+                        <p className="text-[11px] text-ink-600">المفرد · للقطعة</p>
+                        <p className={`text-sm font-extrabold tabular-nums ${retail ? 'text-brand-800' : 'text-warn-600'}`}>
                           {retail ? formatIQD(retail) : 'عند الطلب'}
                         </p>
                       </div>
                       <div className="rounded-xl bg-ink-50 p-2.5">
-                        <p className="text-[11px] text-ink-600">
-                          {byDozen(r) ? 'سعر الدرزن' : 'الجملة — للقطعة'}
+                        {/* شارة الوحدة: تعرف بنظرة أي سعر تنظر إليه */}
+                        <p className="flex items-center justify-center gap-1 text-[11px] text-ink-600">
+                          الجملة
+                          <span className="rounded-full bg-ink-200 px-1.5 py-px text-[10px] font-extrabold text-ink-800">
+                            {unit === 'dozen' ? 'درزن' : 'قطعة'}
+                          </span>
                         </p>
-                        <p className={`text-sm font-extrabold tabular-nums ${wholesale ? 'text-brand-700' : 'text-warn-600'}`}>
-                          {wholesale ? formatIQD(byDozen(r) ? wholesale * 12 : wholesale) : 'عند الطلب'}
+                        <p className={`text-sm font-extrabold tabular-nums ${piece ? 'text-brand-800' : 'text-warn-600'}`}>
+                          {piece ? formatIQD(inUnit(piece, unit)) : 'عند الطلب'}
                         </p>
-                        {wholesale > 0 && byDozen(r) && (
-                          <p className="text-[10px] text-ink-600">القطعة {formatIQD(wholesale)}</p>
+                        {piece > 0 && (
+                          <p className="text-[10px] text-ink-600">
+                            {unit === 'dozen' ? `القطعة ${formatIQD(piece)}` : `الدرزن ${formatIQD(piece * 12)}`}
+                          </p>
                         )}
                       </div>
                     </div>
