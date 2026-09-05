@@ -793,3 +793,136 @@ begin
 exception when others then
   return new;
 end $fn$;
+
+
+-- ---------------------------------------------------------------------
+-- 15) تقرير مبيعات يومي متكامل — تلقائي إلى تيليغرام كل يوم 23:59 بغداد
+--     الحدود بتوقيت بغداد (UTC+3 بلا توقيت صيفي) لا بتوقيت الخادم (UTC)،
+--     وإلا كانت طلبات 00:00–02:59 بغداد تُحسب على اليوم السابق خطأً.
+-- ---------------------------------------------------------------------
+create extension if not exists pg_cron with schema extensions;
+
+create or replace function public.send_daily_sales_report()
+returns void language plpgsql security definer
+set search_path = public, extensions as $fn$
+declare
+  v_token text; v_chat text;
+  v_date  date := (now() at time zone 'Asia/Baghdad')::date;
+  v_ystd  date := v_date - 1;
+  tz constant text := 'Asia/Baghdad';
+
+  v_orders int; v_delivered int; v_confirmed int; v_new int; v_cancelled int;
+  v_goods bigint; v_delivery bigint; v_total bigint; v_cash bigint; v_debt bigint;
+  v_expenses bigint; v_purchases bigint; v_net bigint;
+  v_total_ystd bigint;
+  v_debts_open bigint; v_debts_overdue bigint;
+  v_low_count int;
+  v_top text;
+  v_money text;
+begin
+  select value into v_token from public.app_settings where key = 'telegram_bot_token';
+  select value into v_chat  from public.app_settings where key = 'telegram_chat_id';
+  if coalesce(v_token, '') = '' or coalesce(v_chat, '') = '' then
+    return;
+  end if;
+
+  v_money := 'FM999,999,999,999';
+
+  select
+    count(*) filter (where status <> 'cancelled'),
+    count(*) filter (where status = 'delivered'),
+    count(*) filter (where status = 'confirmed'),
+    count(*) filter (where status = 'new'),
+    count(*) filter (where status = 'cancelled'),
+    coalesce(sum(subtotal)      filter (where status <> 'cancelled'), 0),
+    coalesce(sum(delivery_fee)  filter (where status <> 'cancelled'), 0),
+    coalesce(sum(total_amount)  filter (where status <> 'cancelled'), 0),
+    coalesce(sum(total_amount)  filter (where status <> 'cancelled' and payment = 'cash'), 0),
+    coalesce(sum(total_amount)  filter (where status <> 'cancelled' and payment = 'debt'), 0)
+    into v_orders, v_delivered, v_confirmed, v_new, v_cancelled,
+         v_goods, v_delivery, v_total, v_cash, v_debt
+  from public.orders
+  where (created_at at time zone tz)::date = v_date;
+
+  select coalesce(sum(total_amount), 0) into v_total_ystd
+  from public.orders
+  where status <> 'cancelled' and (created_at at time zone tz)::date = v_ystd;
+
+  select coalesce(sum(amount), 0) into v_expenses
+  from public.expenses where spent_on = v_date;
+
+  select coalesce(sum(total_amount), 0) into v_purchases
+  from public.purchases where status = 'received' and (created_at at time zone tz)::date = v_date;
+
+  v_net := v_total - v_expenses - v_purchases;
+
+  select coalesce(sum(remaining), 0),
+         coalesce(sum(remaining) filter (where overdue), 0)
+    into v_debts_open, v_debts_overdue
+  from public.debts_view where kind = 'receivable' and settled_at is null;
+
+  select count(*) into v_low_count
+  from public.products where is_active and quantity_single <= 12;
+
+  select coalesce(string_agg(
+    format('%s. %s — %s قطعة (%s د.ع)', rn, name, qty, to_char(revenue, v_money)), E'\n' order by rn), '—')
+    into v_top
+  from (
+    select row_number() over (order by revenue desc) rn, name, qty, revenue
+    from (
+      select it->>'name' as name, sum((it->>'qty')::int) qty, sum((it->>'line_total')::bigint) revenue
+        from public.orders o, jsonb_array_elements(o.items_json) it
+       where o.status <> 'cancelled' and (o.created_at at time zone tz)::date = v_date
+       group by it->>'name'
+    ) agg
+    order by revenue desc
+    limit 5
+  ) t;
+
+  perform net.http_post(
+    url     := 'https://api.telegram.org/bot' || v_token || '/sendMessage',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body    := jsonb_build_object(
+      'chat_id', v_chat,
+      'parse_mode', 'HTML',
+      'text',
+        '📊 <b>التقرير اليومي — أسواق الرفاعي</b>' || E'\n' ||
+        '<code>' || to_char(v_date, 'YYYY-MM-DD') || '</code>' || E'\n\n' ||
+
+        '🧾 الطلبات: <b>' || v_orders || '</b>' ||
+        ' (🟢 ' || v_delivered || ' مُسلَّم · 🟠 ' || v_confirmed || ' مؤكد · 🔵 ' || v_new || ' جديد)' ||
+        (case when v_cancelled > 0 then ' · 🔴 ' || v_cancelled || ' ملغى' else '' end) || E'\n\n' ||
+
+        '📦 بضاعة: ' || to_char(v_goods, v_money) || E'\n' ||
+        '🚚 توصيل: ' || to_char(v_delivery, v_money) || E'\n' ||
+        '💰 <b>إجمالي المبيعات: ' || to_char(v_total, v_money) || '</b>' || E'\n' ||
+        '   ├ نقد: ' || to_char(v_cash, v_money) || E'\n' ||
+        '   └ آجل: ' || to_char(v_debt, v_money) || E'\n\n' ||
+
+        '💸 مصاريف اليوم: ' || to_char(v_expenses, v_money) || E'\n' ||
+        '📥 مشتريات مستلَمة اليوم: ' || to_char(v_purchases, v_money) || E'\n' ||
+        '━━━━━━━━━━━━' || E'\n' ||
+        (case when v_net >= 0 then '📈' else '📉' end) || ' <b>الصافي: ' || to_char(v_net, v_money) || '</b>' || E'\n\n' ||
+
+        '🏆 <b>الأكثر مبيعاً اليوم</b>' || E'\n' || v_top || E'\n\n' ||
+
+        '💳 ديون مفتوحة لنا: <b>' || to_char(v_debts_open, v_money) || '</b>' ||
+        (case when v_debts_overdue > 0 then E'\n⚠️ منها متأخر: <b>' || to_char(v_debts_overdue, v_money) || '</b>' else '' end) ||
+        (case when v_low_count > 0 then E'\n⚠️ نواقص المخزون: <b>' || v_low_count || '</b> صنف' else '' end) || E'\n\n' ||
+
+        '↔️ مقارنة بالأمس: ' ||
+        (case
+           when v_total_ystd = 0 and v_total = 0 then 'بلا مبيعات في اليومين'
+           when v_total_ystd = 0 then '+' || to_char(v_total, v_money) || ' (لا مبيعات أمس)'
+           else to_char(round(((v_total - v_total_ystd)::numeric / v_total_ystd) * 100), 'FM999') ||
+                '% ' || (case when v_total >= v_total_ystd then '📈' else '📉' end)
+         end)
+    )
+  );
+end $fn$;
+
+revoke all on function public.send_daily_sales_report() from public;
+
+-- 23:59 بغداد = 20:59 UTC (توقيت الخادم)، بلا توقيت صيفي في العراق
+select cron.unschedule(jobid) from cron.job where jobname = 'daily-sales-report';
+select cron.schedule('daily-sales-report', '59 20 * * *', $$select public.send_daily_sales_report()$$);
