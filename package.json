@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build && node scripts/prerender.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db": "node scripts/db.mjs",
+    "ship": "node scripts/ship.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
