@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import {
   ScanLine, Camera, Loader2, Save, ArrowRight, Trash2, ImageOff, Boxes, Images, Search,
-  ScanSearch, Link as LinkIcon, Star,
+  ScanSearch, Link as LinkIcon, Star, ScanText,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
 import { uploadProductImage, deleteProductImage, fetchImageFromUrl } from '../../lib/image'
+import { readImageText } from '../../lib/ocr'
 import { googleImages, googleLens } from '../../lib/search'
 import { useAuth } from '../../context/AuthContext'
 
@@ -32,6 +33,7 @@ export default function ProductEditor() {
     sold_by: 'dozen',
     price_unit: 'dozen',
     is_featured: false,
+    description: '',
   })
   const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
   const [dozens, setDozens] = useState('')
@@ -40,6 +42,8 @@ export default function ProductEditor() {
   const [preview, setPreview] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [fetching, setFetching] = useState(false)
+  const [reading, setReading] = useState(false)
+  const lastOcr = useRef('')   // آخر نص قرأه التطبيق: لا نكتب فوق ما عدّله الموظف يدوياً
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading] = useState(!isNew)
   const [busy, setBusy] = useState(false)
@@ -68,8 +72,8 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
       if (error || !data) {
@@ -84,6 +88,7 @@ export default function ProductEditor() {
           sold_by: data.sold_by ?? 'dozen',
           price_unit: data.price_unit ?? 'dozen',
           is_featured: data.is_featured ?? false,
+          description: data.description ?? '',
         })
         if (data.product_prices) {
           setPrices({
@@ -98,11 +103,37 @@ export default function ProductEditor() {
     })
   }, [id, isNew, isAdmin])
 
-  const pickImage = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // يقرأ الكتابة التي على الصورة ويضعها في الوصف ليُبحث بها عن المنتج.
+  // تلقائي عند اختيار صورة (لا يمسّ وصفاً كتبه الموظف)، وبالزر يستبدل الوصف.
+  const readText = async (file, force = false) => {
+    setReading(true)
+    try {
+      const text = await readImageText(file)
+      const prev = lastOcr.current
+      lastOcr.current = text
+      setForm((f) => (force || !f.description.trim() || f.description === prev) ? { ...f, description: text } : f)
+    } catch {
+      /* القراءة اختيارية: لا تمنع إضافة المنتج */
+    } finally {
+      setReading(false)
+    }
+  }
+
+  const setPicked = (file) => {
     setImageFile(file)
     setPreview(URL.createObjectURL(file))
+    readText(file)
+  }
+
+  const pickImage = (e) => {
+    const file = e.target.files?.[0]
+    if (file) setPicked(file)
+  }
+
+  // صورة محفوظة سابقاً (منتج قديم): تُجلب من التخزين ثم تُقرأ
+  const rereadText = async () => {
+    const src = imageFile ?? (await fetch(form.image_url).then((r) => r.blob()).catch(() => null))
+    if (src) readText(src, true)
   }
 
   // إرفاق صورة من رابط خارجي — تُجلب عبر وسيط الخادم لتجاوز حجب CORS
@@ -111,8 +142,7 @@ export default function ProductEditor() {
     setError('')
     try {
       const file = await fetchImageFromUrl(imageUrl.trim())
-      setImageFile(file)
-      setPreview(URL.createObjectURL(file))
+      setPicked(file)
       setImageUrl('')
     } catch (err) {
       setError(err.message ?? 'تعذّر جلب الصورة')
@@ -137,6 +167,7 @@ export default function ProductEditor() {
         sold_by: form.sold_by,
         price_unit: form.price_unit,
         is_featured: form.is_featured,
+        description: form.description.trim() || null,
       }
 
       let productId = id
@@ -349,6 +380,29 @@ export default function ProductEditor() {
             صوّر المنتج واحفظه، ثم افتح <b>عدسة جوجل</b> لتتعرّف عليه وتريك صوره
             الرسمية. انسخ رابط الصورة الأوضح والصقه هنا ليحلّ محلّ صورتك.
           </p>
+        </div>
+
+        <div>
+          <div className="mb-1 flex items-center gap-2">
+            <label className="text-sm font-semibold" htmlFor="description">الوصف (للبحث)</label>
+            {reading && (
+              <span className="flex items-center gap-1 text-[11px] text-ink-600">
+                <Loader2 className="size-3 animate-spin" /> جارٍ قراءة الكتابة من الصورة…
+              </span>
+            )}
+            {(imageFile || form.image_url) && !reading && (
+              <button type="button" onClick={rereadText}
+                      className="ms-auto flex items-center gap-1 rounded-lg bg-ink-100 px-2 py-1 text-[11px] font-bold hover:bg-ink-200">
+                <ScanText className="size-3.5" /> اقرأ من الصورة
+              </button>
+            )}
+          </div>
+          <textarea
+            id="description" rows={3} value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            placeholder="تُملأ تلقائياً بما هو مكتوب على الصورة — عدّلها إن أخطأت القراءة"
+            className={field}
+          />
         </div>
       </div>
 

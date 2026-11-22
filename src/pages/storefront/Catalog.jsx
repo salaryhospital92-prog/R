@@ -8,6 +8,7 @@ import { STORE, asset, contactWhatsappUrl, telUrl } from '../../lib/store'
 import ProductCard from '../../components/ProductCard'
 import ContactCard, { FloatingWhatsapp } from '../../components/ContactCard'
 import SideMenu from '../../components/SideMenu'
+import { hasText } from '../../lib/ocr'
 
 export default function Catalog({ mode }) {
   const navigate = useNavigate()
@@ -58,7 +59,7 @@ export default function Catalog({ mode }) {
 
   const shown = products.filter((p) => {
     const q = query.trim()
-    return (!q || p.name.includes(q)) && (!categoryId || String(p.category_id) === categoryId)
+    return (!q || hasText(p.name, q) || hasText(p.description, q)) && (!categoryId || String(p.category_id) === categoryId)
   })
 
   const subtotal = products.reduce((sum, p) => {

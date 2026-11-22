@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Plus, ScanLine, Search, Package, Loader2, ImageOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
+import { hasText } from '../../lib/ocr'
 import { useAuth } from '../../context/AuthContext'
 
 // html5-qrcode مكتبة ثقيلة (~400KB) — تُحمَّل عند فتح الماسح فقط
@@ -23,8 +24,8 @@ export default function Products() {
     setLoading(true)
     // موظف الإدخال لا يطلب الأسعار إطلاقاً — والخادم لا يعطيه إياها أصلاً (RLS)
     const select = isAdmin
-      ? 'id, barcode, name, image_url, quantity_single, category_id, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)'
-      : 'id, barcode, name, image_url, quantity_single, category_id, sold_by, price_unit, categories(name)'
+      ? 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)'
+      : 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, categories(name)'
 
     const [p, c] = await Promise.all([
       supabase.from('products').select(select).order('created_at', { ascending: false }).limit(200),
@@ -47,7 +48,7 @@ export default function Products() {
 
   const shown = products.filter((p) => {
     const q = query.trim()
-    const matchQuery = !q || p.name.includes(q) || (p.barcode ?? '').includes(q)
+    const matchQuery = !q || hasText(p.name, q) || hasText(p.barcode, q) || hasText(p.description, q)
     const matchCat = !categoryId || String(p.category_id) === categoryId
     return matchQuery && matchCat
   })
