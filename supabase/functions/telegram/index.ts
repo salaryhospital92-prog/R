@@ -318,6 +318,7 @@ async function onAction(chat: number, action: string, agent: Agent) {
   if (ns === 'zone') return startFlow(chat, 'setZoneFee', key, agent)
   if (ns === 'ord') return showOrder(chat, key, admin)
   if (ns === 'ost') return setOrderStatus(chat, key, arg!, admin)
+  if (ns === 'zad' || ns === 'zadgo' || ns === 'zadx') return zadAction(chat, ns, key, admin)
   if (ns === 'agent') return toggleAgent(chat, Number(key), admin)
 
   // تمييز منتج ليتصدّر «الأكثر طلباً» في الصفحة الرئيسية
@@ -1064,11 +1065,23 @@ async function showOrder(chat: number, id: string, admin: boolean) {
     data: { orderId: o.id, unpriced: unpriced.map((i: any) => ({ product_id: i.product_id, name: i.name, qty: i.qty })) },
   })
 
+  const { data: dv } = await db.from('zad_deliveries').select('status, summon_number, captain')
+    .eq('order_id', o.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const zadActive = !!dv && ZAD_ACTIVE.includes(dv.status)
+  const zadLine = dv
+    ? `\n\n🚴 <b>زاد:</b> ${ZAD_LABEL[dv.status] ?? dv.status}` +
+      (dv.summon_number ? ` · رقم الاستدعاء <code>${dv.summon_number}</code>` : '') +
+      (dv.captain?.name ? `\n${dv.captain.name}${dv.captain.phone ? ` · <code>${dv.captain.phone}</code>` : ''}` : '')
+    : ''
+
   const buttons: Row[] = [
     // زر لكل بند يفتح صفحته بصورته — أسرع تمييز بين المتشابهات
     ...items.filter((i: any) => STORE_URL && i.code).map((i: any) =>
       [[`🔎 ${i.name}`, `${STORE_URL}/p/${i.code}`]] as Row),
     ...unpriced.map((i: any, n: number) => [[`🏷 تسعير: ${i.name}`, `pick:${n}`]] as Row),
+    (o.status === 'new' || o.status === 'confirmed') && !zadActive
+      ? [[o.status === 'new' ? '🚴 تأكيد واستدعاء كابتن' : '🚴 استدعاء كابتن', `zad:${o.id}`]] : [],
+    dv?.status === 'searching' ? [['✖️ إلغاء الاستدعاء', `zadx:${o.id}`]] : [],
     [['🟠 مؤكد', `ost:${o.id}:confirmed`], ['🟢 مُسلَّم', `ost:${o.id}:delivered`]],
     [['🔴 إلغاء الطلب', `ost:${o.id}:cancelled`]],
     phone.length >= 10 ? [['💬 مراسلة الزبون', `https://wa.me/${phone}`]] : [],
@@ -1085,8 +1098,52 @@ async function showOrder(chat: number, id: string, admin: boolean) {
     `🛒 ${o.mode === 'wholesale' ? 'جملة' : 'مفرد'} · ${o.payment === 'debt' ? 'آجل' : 'نقد'}\n\n` +
     `${lines}\n\n` +
     `البضاعة: ${iqd(o.subtotal)}\nالتوصيل: ${iqd(o.delivery_fee)}\n💰 <b>المجموع: ${iqd(o.total_amount)}</b>` +
-    (unpriced.length ? `\n\n⚠️ <b>${unpriced.length}</b> بند بلا سعر — سعّره ليكتمل المجموع.` : ''),
+    (unpriced.length ? `\n\n⚠️ <b>${unpriced.length}</b> بند بلا سعر — سعّره ليكتمل المجموع.` : '') + zadLine,
     buttons, true)
+}
+
+const ZAD_ACTIVE = ['searching', 'assigned', 'picked_up', 'on_hold']
+const ZAD_LABEL: Record<string, string> = {
+  searching: 'يبحث عن كابتن…', assigned: 'الكابتن بالطريق للمحل',
+  picked_up: 'استلم الطلب وهو بالطريق للزبون', delivered: 'سُلِّم للزبون',
+  failed: 'فشل التسليم', cancelled: 'أُلغي الاستدعاء', on_hold: 'عند دعم زاد',
+}
+
+/** استدعاء كابتن زاد من البوت: شاشة تأكيد ← تنفيذ (تأكيد الطلب ثم الاستدعاء) ← إلغاء.
+    الدالة في القاعدة تتحقق من كل الشروط (منطقة مرتبطة، سعر، هاتف…) وتعيد السبب نصاً. */
+async function zadAction(chat: number, ns: string, id: string, admin: boolean) {
+  if (!admin) return screen(chat, '🔒 هذا القسم للمدير فقط.', [backRow()])
+  const { data: o } = await db.from('orders').select('*').eq('id', id).maybeSingle()
+  if (!o) return screen(chat, '❌ لم أجد الطلب.', [backRow()])
+  const back: Row = [['⬅️ الطلب', `ord:${id}`]]
+
+  if (ns === 'zad') {
+    return screen(chat,
+      `🚴 <b>${o.status === 'new' ? 'تأكيد الطلب واستدعاء' : 'استدعاء'} كابتن زاد</b>\n` +
+      `طلب #${o.order_number} · ${o.customer_name}\n📍 ${o.delivery_zone ?? '—'}\n\n` +
+      `يتجه الكابتن إلى المحل ويدفع ثمن البضاعة <b>${iqd(o.total_amount - o.delivery_fee)}</b> عندكم،\n` +
+      `ثم يحصّل من الزبون البضاعة + أجرة زاد.\n\n⚠️ سيُرسَل كابتن حقيقي.`,
+      [[['✅ نعم، استدعِ', `zadgo:${id}`]], [['✖️ تراجع', `ord:${id}`]]])
+  }
+
+  if (ns === 'zadx') {
+    const { error } = await db.rpc('zad_cancel', { p_order_id: id })
+    return error ? screen(chat, '⚠️ ' + error.message, [back]) : showOrder(chat, id, admin)
+  }
+
+  // zadgo
+  if (o.status === 'new') {
+    const { error } = await db.from('orders').update({ status: 'confirmed' }).eq('id', id)
+    if (error) return screen(chat, '⚠️ تعذّر تأكيد الطلب: ' + error.message, [back])
+  }
+  const { data, error } = await db.rpc('zad_dispatch', { p_order_id: id })
+  if (error) {
+    return screen(chat, `⚠️ لم يُستدعَ الكابتن:\n${error.message}\n\nالطلب بقي مؤكَّداً — أصلح السبب ثم أعد المحاولة.`,
+      [[['🚴 أعد المحاولة', `zad:${id}`]], back])
+  }
+  return screen(chat,
+    `✅ استُدعي كابتن زاد للطلب #${o.order_number}\nرقم الاستدعاء: <code>${data?.summon_number ?? '—'}</code>\n` +
+    'سأرسل لك كل تحديث لرحلته هنا.', [back])
 }
 
 async function setOrderStatus(chat: number, id: string, status: string, admin: boolean) {
