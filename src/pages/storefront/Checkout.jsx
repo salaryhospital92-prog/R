@@ -29,7 +29,8 @@ export default function Checkout() {
     if (ids.length === 0) { setLoading(false); return }
     Promise.all([
       supabase.from('storefront_products').select('*').in('id', ids),
-      supabase.from('delivery_zones').select('id, name, fee').order('sort_order'),
+      // فعّالة فقط: سياسة القراءة تُظهر المعطَّلة للمدير، فيرى ما يراه الزبون بالضبط
+      supabase.from('delivery_zones').select('id, name, fee').eq('is_active', true).order('sort_order'),
     ]).then(([p, z]) => {
       setProducts(p.data ?? [])
       setZones(z.data ?? [])
