@@ -285,8 +285,9 @@ export default function Checkout() {
 
       {!orderWindow().open && (
         <p className="mx-3 mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold leading-relaxed text-warn-600">
-          المتجر مغلق الآن. يمكنك إرسال طلبك وسيُجهَّز {orderWindow().when} من الساعة 9:00 صباحاً.
-          (آخر طلب لليوم الساعة 5:45 مساءً)
+          {orderWindow().holiday ? 'اليوم الجمعة إجازة في المتجر.' : 'المتجر مغلق الآن.'}{' '}
+          يمكنك إرسال طلبك وسيُجهَّز {orderWindow().when} من الساعة 9:00 صباحاً.
+          {!orderWindow().holiday && ' (آخر طلب لليوم الساعة 5:45 مساءً)'}
         </p>
       )}
 

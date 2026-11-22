@@ -13,7 +13,7 @@ export const STORE = {
   address: 'العراق — الأنبار — الرمادي — شارع السينما — فرع الشورجة',
   addressShort: 'الرمادي — شارع السينما',
   phone: import.meta.env.VITE_STORE_PHONE || '07829137822',
-  hours: 'يومياً من 9:00 صباحاً حتى 6:00 مساءً',
+  hours: 'من السبت إلى الخميس، 9:00 صباحاً حتى 6:00 مساءً — الجمعة إجازة',
 }
 
 /**
@@ -22,12 +22,16 @@ export const STORE = {
  * نفس الحدود في notify_new_order (migration 005) — غيّرهما معاً.
  */
 export function orderWindow(now = new Date()) {
-  const [h, m] = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Baghdad', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(now).split(':').map(Number)
+  const tz = { timeZone: 'Asia/Baghdad' }
+  const [h, m] = new Intl.DateTimeFormat('en-GB', { ...tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .format(now).split(':').map(Number)
+  const day = new Intl.DateTimeFormat('en-US', { ...tz, weekday: 'short' }).format(now)
   const min = h * 60 + m
+  // الجمعة إجازة طوال اليوم: كل طلب يؤجَّل إلى السبت
+  if (day === 'Fri') return { open: false, holiday: true, when: 'يوم السبت' }
   if (min < 9 * 60) return { open: false, when: 'اليوم' }
-  if (min > 17 * 60 + 45) return { open: false, when: 'غداً' }
+  // بعد إغلاق الخميس غدُه الجمعة، فيُجهَّز السبت
+  if (min > 17 * 60 + 45) return { open: false, when: day === 'Thu' ? 'يوم السبت' : 'غداً' }
   return { open: true }
 }
 
