@@ -12,6 +12,7 @@ import Layout from './pages/dashboard/Layout'
 import Products from './pages/dashboard/Products'
 import ProductEditor from './pages/dashboard/ProductEditor'
 import Orders from './pages/dashboard/Orders'
+import Dispatch from './pages/dashboard/Dispatch'
 import Prices from './pages/dashboard/Prices'
 import Zones from './pages/dashboard/Zones'
 import Reports from './pages/dashboard/Reports'
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/dashboard" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route index element={<Products />} />
               <Route path="product/:id" element={<ProductEditor />} />
+              <Route path="dispatch" element={<Dispatch />} />
               <Route path="orders"  element={<ProtectedRoute adminOnly><Orders /></ProtectedRoute>} />
               <Route path="prices"  element={<ProtectedRoute adminOnly><Prices /></ProtectedRoute>} />
               <Route path="zones"   element={<ProtectedRoute adminOnly><Zones /></ProtectedRoute>} />

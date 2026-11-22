@@ -1,7 +1,7 @@
 import { NavLink, Outlet, Link, useNavigate } from 'react-router-dom'
 import {
   Package, LogOut, ShieldCheck, UserRound, ClipboardList, Tags, Truck, TrendingUp, Store,
-  Bell, BellRing, X,
+  Bell, BellRing, X, PackageCheck,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useOrderAlerts } from '../../hooks/useOrderAlerts'
@@ -10,6 +10,7 @@ import { asset } from '../../lib/store'
 
 const NAV = [
   { to: '/dashboard',         label: 'المنتجات', icon: Package,       end: true },
+  { to: '/dashboard/dispatch', label: 'التجهيز', icon: PackageCheck, supervisor: true },
   { to: '/dashboard/orders',  label: 'الطلبات',  icon: ClipboardList, admin: true },
   { to: '/dashboard/prices',  label: 'الأسعار',  icon: Tags,          admin: true },
   { to: '/dashboard/zones',   label: 'التوصيل',  icon: Truck,         admin: true },
@@ -19,6 +20,7 @@ const NAV = [
 export default function Layout() {
   const { profile, isAdmin, signOut } = useAuth()
   const navigate = useNavigate()
+  const isSupervisor = profile?.role === 'admin' || profile?.role === 'data_entry'
   const { permission, requestPermission, lastOrder, dismiss } = useOrderAlerts(isAdmin)
 
   const link = ({ isActive }) =>
@@ -60,7 +62,7 @@ export default function Layout() {
         </div>
 
         <nav className="no-scrollbar mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 py-2">
-          {NAV.filter((n) => !n.admin || isAdmin).map(({ to, label, icon: Icon, end }) => (
+          {NAV.filter((n) => (!n.admin || isAdmin) && (!n.supervisor || isSupervisor)).map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={link}>
               <Icon className="size-4" /> {label}
             </NavLink>

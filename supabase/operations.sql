@@ -1149,6 +1149,17 @@ begin
   return jsonb_build_object('synced', n, 'disabled', d);
 end $$;
 
+/** من يستدعي كابتن زاد: المدير للكل، مدير المنى لطلبات المنى، والمشرف لطلبات الرفاعي.
+    (is_supervisor معرَّفة في migrations/002 — تُحلّ عند التشغيل لا عند الإنشاء.) */
+create or replace function public.zad_can(p_source text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return public.is_admin()
+      or (p_source = 'mona' and coalesce(public.is_mona_admin(), false))
+      or (p_source is distinct from 'mona' and coalesce(public.is_supervisor(), false));
+end $$;
+revoke all on function public.zad_can(text) from public, anon, authenticated;
+
 /** استدعاء كابتن لطلب مؤكَّد وجاهز. الكابتن يدفع ثمن البضاعة عند المحل ويحصّله من الزبون. */
 create or replace function public.zad_dispatch(p_order_id uuid) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
@@ -1162,7 +1173,7 @@ begin
 
   select * into o from public.orders where id = p_order_id for update;
   if not found then raise exception 'الطلب غير موجود'; end if;
-  if not (public.is_admin() or (o.source = 'mona' and coalesce(public.is_mona_admin(), false))) then
+  if not public.zad_can(o.source) then
     raise exception 'غير مسموح';
   end if;
   if o.status <> 'confirmed' then raise exception 'أكّد الطلب أولاً ثم استدعِ الكابتن عند جاهزيته'; end if;
@@ -1224,7 +1235,7 @@ language plpgsql security definer set search_path = public, extensions as $$
 declare dv public.zad_deliveries; res jsonb; v_src text;
 begin
   select source into v_src from public.orders where id = p_order_id;
-  if not (public.is_admin() or (v_src = 'mona' and coalesce(public.is_mona_admin(), false))) then
+  if not public.zad_can(v_src) then
     raise exception 'غير مسموح';
   end if;
   select * into dv from public.zad_deliveries
