@@ -15,10 +15,11 @@ const LABEL = {
 }
 
 /**
- * استدعاء كابتن زاد لطلب مؤكَّد وجاهز، ومتابعة رحلته.
- * الكابتن يدفع ثمن البضاعة عند المحل ويحصّله من الزبون مع أجرة التوصيل.
+ * تأكيد الطلب واستدعاء كابتن زاد بضغطة واحدة، ومتابعة رحلته.
+ * الكابتن يتجه إلى المتجر ويدفع ثمن البضاعة، ثم يحصّله من الزبون مع أجرة التوصيل.
+ * `onChanged` يُستدعى بعد أي تغيير ليعيد الأب قراءة الطلب (حالته تتغير عند التأكيد).
  */
-export default function ZadPanel({ order }) {
+export default function ZadPanel({ order, onChanged }) {
   const [dv, setDv] = useState(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -39,17 +40,25 @@ export default function ZadPanel({ order }) {
     return () => clearInterval(t)
   }, [active, load])
 
+  const isNew = order.status === 'new'
+
   const dispatch = async () => {
     const goods = order.total_amount - order.delivery_fee
     const ok = window.confirm(
-      `استدعاء كابتن زاد للطلب #${order.order_number}؟\n\n` +
-      `يدفع الكابتن ثمن البضاعة ${formatIQD(goods)} عند المحل،\n` +
-      'ويحصّل من الزبون البضاعة + أجرة زاد.')
+      `${isNew ? 'تأكيد الطلب واستدعاء' : 'استدعاء'} كابتن زاد للطلب #${order.order_number}؟\n\n` +
+      `يتجه الكابتن إلى المتجر ويدفع ثمن البضاعة ${formatIQD(goods)} عندكم،\n` +
+      'ثم يحصّل من الزبون البضاعة + أجرة زاد.')
     if (!ok) return
     setBusy('dispatch'); setError('')
+    if (isNew) {
+      const { error: e1 } = await supabase.from('orders').update({ status: 'confirmed' }).eq('id', order.id)
+      if (e1) { setError('تعذّر تأكيد الطلب: ' + e1.message); setBusy(''); return }
+    }
     const { error } = await supabase.rpc('zad_dispatch', { p_order_id: order.id })
+    // إن فشل الاستدعاء يبقى الطلب مؤكَّداً ويظهر السبب — وتُعاد المحاولة بالزرّ نفسه
     if (error) setError(error.message)
     await load()
+    onChanged?.()
     setBusy('')
   }
 
@@ -59,10 +68,11 @@ export default function ZadPanel({ order }) {
     const { error } = await supabase.rpc('zad_cancel', { p_order_id: order.id })
     if (error) setError(error.message)
     await load()
+    onChanged?.()
     setBusy('')
   }
 
-  const canCall = order.status === 'confirmed' && !active
+  const canCall = (order.status === 'confirmed' || isNew) && !active
   if (!dv && !canCall) return null
 
   return (
@@ -105,7 +115,7 @@ export default function ZadPanel({ order }) {
           <button type="button" onClick={dispatch} disabled={Boolean(busy)}
                   className="flex min-h-10 items-center gap-2 rounded-xl bg-brand-700 px-4 py-2 font-bold text-white disabled:opacity-60">
             {busy === 'dispatch' ? <Loader2 className="size-4 animate-spin" /> : <Bike className="size-4" />}
-            {dv ? 'استدعاء كابتن من جديد' : 'استدعاء كابتن زاد'}
+            {isNew ? 'تأكيد الطلب واستدعاء كابتن' : dv ? 'استدعاء كابتن من جديد' : 'استدعاء كابتن زاد'}
           </button>
         )}
         {dv?.status === 'searching' && (

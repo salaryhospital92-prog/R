@@ -151,7 +151,7 @@ export default function Orders() {
                       )}
                     </div>
 
-                    <ZadPanel order={o} />
+                    <ZadPanel order={o} onChanged={load} />
 
                     <ul className="mb-3 grid gap-2">
                       {(o.items_json ?? []).map((it, i) => {
