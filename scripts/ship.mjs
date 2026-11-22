@@ -10,6 +10,11 @@ const run = (label, cmd, args, env = {}) => {
 }
 
 run('ترحيلات قاعدة البيانات', 'node', ['scripts/db.mjs'])
+// نشر بوت تيليغرام إن وُجد التوكن في .db.local (SUPABASE_ACCESS_TOKEN) — وإلا يُتخطّى بتنبيه
+import { readFileSync } from 'node:fs'
+const tok = (() => { try { return readFileSync('.db.local', 'utf8').match(/^SUPABASE_ACCESS_TOKEN=(.+)$/m)?.[1].trim() } catch { return null } })()
+if (tok) run('نشر بوت تيليغرام', 'npx', ['--yes', 'supabase', 'functions', 'deploy', 'telegram', '--remote=slrhxeozdadonarkclba', '--no-verify-jwt', '--use-api', '--yes'], { SUPABASE_ACCESS_TOKEN: tok })
+else console.log('\n⚠ لا SUPABASE_ACCESS_TOKEN في .db.local — تخطّيتُ نشر البوت')
 run('فحص البناء', 'npm', ['run', 'build'])
 run('الرفع إلى GitHub', 'git', ['push', 'origin', 'main'], { GIT_TERMINAL_PROMPT: '0' })
 console.log('\n✔ رُفع. يبدأ النشر على alrifai.shop الآن (دقيقة أو دقيقتان).')
