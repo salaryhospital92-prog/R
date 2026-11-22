@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "almona",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../almona", "run", "dev"],
+      "port": 5174
     }
   ]
 }

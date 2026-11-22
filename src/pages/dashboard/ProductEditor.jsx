@@ -65,7 +65,7 @@ export default function ProductEditor() {
   }
 
   useEffect(() => {
-    supabase.from('categories').select('id, name').order('sort_order')
+    supabase.from('categories').select('id, name').eq('store', 'rifai').order('sort_order')
       .then(({ data }) => setCategories(data ?? []))
   }, [])
 

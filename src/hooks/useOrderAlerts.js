@@ -45,6 +45,7 @@ export function useOrderAlerts(enabled) {
     const channel = supabase
       .channel('orders-alerts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, ({ new: o }) => {
+        if (o.source === 'mona') return // طلبات المنى لها لوحتها الخاصة
         setLastOrder(o)
         beep()
         if (supported && Notification.permission === 'granted') {

@@ -29,6 +29,7 @@ export default function Prices() {
     supabase
       .from('products')
       .select('id, name, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)')
+      .eq('store', 'rifai')
       .order('name')
       .then(({ data, error }) => {
         if (error) setError('تعذّر التحميل: ' + error.message)

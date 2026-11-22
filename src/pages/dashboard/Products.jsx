@@ -28,8 +28,8 @@ export default function Products() {
       : 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, categories(name)'
 
     const [p, c] = await Promise.all([
-      supabase.from('products').select(select).order('created_at', { ascending: false }).limit(200),
-      supabase.from('categories').select('id, name').order('sort_order'),
+      supabase.from('products').select(select).eq('store', 'rifai').order('created_at', { ascending: false }).limit(200),
+      supabase.from('categories').select('id, name').eq('store', 'rifai').order('sort_order'),
     ])
     if (p.error) setError('تعذّر تحميل المنتجات: ' + p.error.message)
     setProducts(p.data ?? [])
@@ -42,7 +42,7 @@ export default function Products() {
   // الباركود الممسوح: إن وُجد المنتج نفتحه لإضافة كمية، وإلا نفتح منتجاً جديداً بالباركود جاهزاً
   const handleScan = async (code) => {
     setScanning(false)
-    const { data } = await supabase.from('products').select('id').eq('barcode', code).maybeSingle()
+    const { data } = await supabase.from('products').select('id').eq('store', 'rifai').eq('barcode', code).maybeSingle()
     navigate(data ? `/dashboard/product/${data.id}` : `/dashboard/product/new?barcode=${encodeURIComponent(code)}`)
   }
 

@@ -25,7 +25,7 @@ export default function Orders() {
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
-      .from('orders').select('*').order('created_at', { ascending: false }).limit(300)
+      .from('orders').select('*').neq('source', 'mona').order('created_at', { ascending: false }).limit(300)
     if (error) setError('تعذّر تحميل الطلبات: ' + error.message)
     setOrders(data ?? [])
     setLoading(false)

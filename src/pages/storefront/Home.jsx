@@ -35,7 +35,7 @@ export default function Home() {
   useEffect(() => {
     Promise.all([
       supabase.from('storefront_products').select('*').order('created_at', { ascending: false }),
-      supabase.from('categories').select('id, name').order('sort_order'),
+      supabase.from('categories').select('id, name').eq('store', 'rifai').order('sort_order'),
       supabase.from('popular_products').select('product_id, qty_sold'),
     ]).then(([p, c, pop]) => {
       if (p.error) setError('تعذّر تحميل المنتجات. تحقق من الاتصال بالإنترنت.')

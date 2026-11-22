@@ -23,9 +23,9 @@ export default function Reports() {
   useEffect(() => {
     Promise.all([
       supabase.from('orders').select('total_amount, subtotal, delivery_fee, status, mode, items_json, created_at')
-        .neq('status', 'cancelled').order('created_at', { ascending: false }).limit(1000),
+        .neq('status', 'cancelled').neq('source', 'mona').order('created_at', { ascending: false }).limit(1000),
       supabase.from('products').select('id, name, quantity_single, categories(name)')
-        .eq('is_active', true).lte('quantity_single', 12).order('quantity_single'),
+        .eq('is_active', true).eq('store', 'rifai').lte('quantity_single', 12).order('quantity_single'),
     ]).then(([o, p]) => {
       if (o.error) setError('تعذّر تحميل التقارير: ' + o.error.message)
       setOrders(o.data ?? [])

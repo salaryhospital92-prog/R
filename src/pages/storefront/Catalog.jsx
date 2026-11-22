@@ -39,7 +39,7 @@ export default function Catalog({ mode }) {
   useEffect(() => {
     Promise.all([
       supabase.from('storefront_products').select('*').order('name'),
-      supabase.from('categories').select('id, name').order('sort_order'),
+      supabase.from('categories').select('id, name').eq('store', 'rifai').order('sort_order'),
     ]).then(([p, c]) => {
       if (p.error) setError('تعذّر تحميل المنتجات. تحقق من الاتصال بالإنترنت.')
       const list = p.data ?? []
