@@ -13,7 +13,22 @@ export const STORE = {
   address: 'العراق — الأنبار — الرمادي — شارع السينما — فرع الشورجة',
   addressShort: 'الرمادي — شارع السينما',
   phone: import.meta.env.VITE_STORE_PHONE || '07829137822',
-  hours: 'يومياً من 9:00 صباحاً حتى 8:00 مساءً',
+  hours: 'يومياً من 9:00 صباحاً حتى 6:00 مساءً',
+}
+
+/**
+ * أوقات استقبال الطلبات بتوقيت بغداد (لا بتوقيت جهاز الزبون): 9:00 ← 17:45.
+ * ما بعدها يُقبل ويصل للموظف لكن يُجهَّز عند الافتتاح — `when` متى: اليوم (قبل 9:00) أو غداً.
+ * نفس الحدود في notify_new_order (migration 005) — غيّرهما معاً.
+ */
+export function orderWindow(now = new Date()) {
+  const [h, m] = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Baghdad', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(now).split(':').map(Number)
+  const min = h * 60 + m
+  if (min < 9 * 60) return { open: false, when: 'اليوم' }
+  if (min > 17 * 60 + 45) return { open: false, when: 'غداً' }
+  return { open: true }
 }
 
 /** رقم التواصل المباشر — يفتح محادثة واتساب برسالة ترحيب جاهزة */

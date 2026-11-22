@@ -8,6 +8,7 @@ import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
 import { buildOrderMessage } from '../../lib/orderText'
 import ContactCard from '../../components/ContactCard'
+import { orderWindow } from '../../lib/store'
 
 export default function Checkout() {
   const cart = useCart()
@@ -69,7 +70,7 @@ export default function Checkout() {
     }
 
     cart.clear()
-    setResult({ ...data, customer_name: form.name.trim(), customer_phone: form.phone.trim(), customer_note: form.note.trim() })
+    setResult({ ...data, deferred: orderWindow(), customer_name: form.name.trim(), customer_phone: form.phone.trim(), customer_note: form.note.trim() })
   }
 
   // ---------- شاشة النجاح ----------
@@ -82,7 +83,9 @@ export default function Checkout() {
             رقم طلبك <span className="text-brand-700 tnum">#{result.order_number}</span>
           </h1>
           <p className="mt-1.5 leading-relaxed text-ink-700">
-            سيتم التواصل معك قريباً أو عند استلام الطلب.
+            {result.deferred.open
+              ? 'سيتم التواصل معك قريباً أو عند استلام الطلب.'
+              : `وصلنا طلبك خارج أوقات العمل، وسيُجهَّز ${result.deferred.when} من الساعة 9:00 صباحاً.`}
           </p>
         </div>
 
@@ -277,6 +280,13 @@ export default function Checkout() {
       {error && (
         <p role="alert" className="surface mx-3 mt-3 border-s-4 border-danger-700 p-3 text-sm font-semibold text-danger-700">
           {error}
+        </p>
+      )}
+
+      {!orderWindow().open && (
+        <p className="mx-3 mt-3 rounded-2xl bg-amber-50 p-3 text-sm font-bold leading-relaxed text-warn-600">
+          المتجر مغلق الآن. يمكنك إرسال طلبك وسيُجهَّز {orderWindow().when} من الساعة 9:00 صباحاً.
+          (آخر طلب لليوم الساعة 5:45 مساءً)
         </p>
       )}
 
