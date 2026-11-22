@@ -926,3 +926,405 @@ revoke all on function public.send_daily_sales_report() from public;
 -- 23:59 بغداد = 20:59 UTC (توقيت الخادم)، بلا توقيت صيفي في العراق
 select cron.unschedule(jobid) from cron.job where jobname = 'daily-sales-report';
 select cron.schedule('daily-sales-report', '59 20 * * *', $$select public.send_daily_sales_report()$$);
+
+
+-- ---------------------------------------------------------------------
+-- 16) الربط مع شركة التوصيل «زاد» (ZAD Integrations API v1)
+--
+-- الاتفاق: الكابتن يمرّ على المحل أولاً ويدفع ثمن البضاعة، ثم يوصّل ويحصّل
+-- من الزبون. لذا يُستدعى عند جاهزية الطلب المؤكَّد (زرّ يدوي)، لا عند التأكيد.
+--
+-- لماذا داخل قاعدة البيانات: السرّ لا يجوز أن يصل المتصفح، والخادم يتصل
+-- بزاد مباشرة عبر امتداد http. المفاتيح في جدول zad_config بلا أي سياسة RLS،
+-- فلا يقرؤه إلا ما تعرّفه الدوال نفسها — لا المتصفح ولا لوحة الإدارة.
+--
+-- مفتاح الأمان zad_dispatch يبدأ مطفأً: لا يُستدعى كابتن قبل أن يُشعَل.
+-- ---------------------------------------------------------------------
+create extension if not exists http with schema extensions;
+
+alter table public.delivery_zones add column if not exists zad_zone_id text unique;
+
+-- ---- إعدادات سرّية: لا سياسة = لا وصول من المتصفح إطلاقاً -------------
+create table if not exists public.zad_config (
+  key        text primary key,
+  value      text not null default '',
+  updated_at timestamptz not null default now()
+);
+alter table public.zad_config enable row level security;
+revoke all on public.zad_config from anon, authenticated;
+
+insert into public.zad_config (key, value) values
+  ('client_id', ''), ('client_secret', ''),
+  ('dispatch', 'off'),                  -- off | on : مفتاح الاستدعاء
+  ('token', ''), ('token_exp', '0'), ('mode', '')
+on conflict (key) do nothing;
+
+-- ---- رحلات زاد ---------------------------------------------------------
+create table if not exists public.zad_deliveries (
+  id             uuid primary key default gen_random_uuid(),
+  order_id       uuid not null references public.orders(id) on delete cascade,
+  zad_order_id   text not null unique,
+  summon_number  text,
+  status         text not null,        -- searching assigned picked_up delivered failed cancelled on_hold
+  captain        jsonb,
+  cancel_reason  text,
+  cash_to_collect bigint not null,     -- ثمن البضاعة فقط — زاد تضيف الأجرة بنفسها
+  delivery_fee   bigint not null,      -- أجرة زاد التي يدفعها الزبون للكابتن
+  mode           text not null,        -- test | live
+  notified_status text,
+  last_polled_at timestamptz,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+-- رحلة نشطة واحدة فقط لكل طلب
+create unique index if not exists uq_zad_active_per_order on public.zad_deliveries (order_id)
+  where status in ('searching', 'assigned', 'picked_up', 'on_hold');
+
+alter table public.zad_deliveries enable row level security;
+drop policy if exists "zad_deliveries_admin" on public.zad_deliveries;
+create policy "zad_deliveries_admin" on public.zad_deliveries
+  for select using (public.is_admin());
+
+-- ---- أدوات داخلية ------------------------------------------------------
+create or replace function public.zad_cfg(p_key text) returns text
+language sql stable security definer set search_path = public as $$
+  select value from public.zad_config where key = p_key;
+$$;
+
+create or replace function public.zad_set(p_key text, p_val text) returns void
+language sql security definer set search_path = public as $$
+  update public.zad_config set value = p_val, updated_at = now() where key = p_key;
+$$;
+
+/** رقم الزبون بالصيغة التي تطلبها زاد: 9647XXXXXXXXX (13 رقماً، بلا + ولا صفر) */
+create or replace function public.zad_canonical_phone(p text) returns text
+language plpgsql immutable as $$
+declare d text := regexp_replace(coalesce(p, ''), '\D', '', 'g');
+begin
+  if d ~ '^9647\d{9}$' then return d; end if;
+  if d ~ '^07\d{9}$'   then return '964' || substr(d, 2); end if;
+  if d ~ '^7\d{9}$'    then return '964' || d; end if;
+  return null;
+end $$;
+
+create or replace function public.zad_tg(p_text text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_token text; v_chat text;
+begin
+  select value into v_token from public.app_settings where key = 'telegram_bot_token';
+  select value into v_chat  from public.app_settings where key = 'telegram_chat_id';
+  if coalesce(v_token, '') = '' or coalesce(v_chat, '') = '' then return; end if;
+  perform net.http_post(
+    url := 'https://api.telegram.org/bot' || v_token || '/sendMessage',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := jsonb_build_object('chat_id', v_chat, 'text', p_text, 'disable_web_page_preview', true));
+exception when others then null;
+end $$;
+
+-- ---- المفتاح المؤقت (ساعة) — يُخزَّن ولا يُطلب لكل استدعاء --------------
+create or replace function public.zad_token(p_force boolean default false) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  v_id text := public.zad_cfg('client_id');
+  v_secret text := public.zad_cfg('client_secret');
+  v_tok text := public.zad_cfg('token');
+  v_exp bigint := coalesce(nullif(public.zad_cfg('token_exp'), '')::bigint, 0);
+  r extensions.http_response; j jsonb;
+begin
+  if not p_force and v_tok <> '' and v_exp > extract(epoch from now())::bigint + 120 then
+    return v_tok;
+  end if;
+  if v_id = '' or v_secret = '' then
+    raise exception 'لم تُضبط بيانات الربط مع زاد بعد';
+  end if;
+
+  perform extensions.http_set_curlopt('CURLOPT_TIMEOUT', '15');
+  r := extensions.http_post('https://api.zad-apps.com/v1/auth/token',
+         jsonb_build_object('client_id', v_id, 'client_secret', v_secret)::text, 'application/json');
+  begin j := r.content::jsonb; exception when others then j := '{}'::jsonb; end;
+
+  if r.status <> 200 then
+    raise exception 'رفضت زاد بيانات الدخول (%): %', r.status, coalesce(j->'error'->>'code', j->>'code', 'غير معروف');
+  end if;
+
+  perform public.zad_set('token', j->>'access_token');
+  perform public.zad_set('token_exp',
+    (extract(epoch from now())::bigint + coalesce((j->>'expires_in')::int, 3600))::text);
+  perform public.zad_set('mode', coalesce(j->>'mode', ''));
+  return j->>'access_token';
+end $$;
+
+/** استدعاء خام لزاد. يعيد {status, body}. ينعش المفتاح مرة واحدة عند 401. */
+create or replace function public.zad_req(p_method text, p_path text,
+                                          p_body jsonb default null, p_idem text default null)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare
+  r extensions.http_response; v_tok text; v_try int := 0; j jsonb;
+begin
+  loop
+    v_try := v_try + 1;
+    v_tok := public.zad_token(v_try > 1);
+    perform extensions.http_set_curlopt('CURLOPT_TIMEOUT', '15');
+    r := extensions.http((
+      p_method, 'https://api.zad-apps.com' || p_path,
+      array_remove(array[
+        extensions.http_header('authorization', 'Bearer ' || v_tok),
+        case when p_idem is not null then extensions.http_header('idempotency-key', p_idem) end
+      ], null),
+      'application/json', coalesce(p_body::text, '')
+    )::extensions.http_request);
+    exit when r.status <> 401 or v_try >= 2;
+  end loop;
+
+  begin j := r.content::jsonb; exception when others then j := jsonb_build_object('raw', left(r.content, 200)); end;
+  return jsonb_build_object('status', r.status, 'body', j);
+end $$;
+
+-- ---- مزامنة المناطق وأجورها من زاد -------------------------------------
+create or replace function public.zad_sync_zones_internal() returns int
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  res jsonb; z jsonb; n int := 0; v_order int := 100;
+begin
+  res := public.zad_req('GET', '/v1/zones');
+  if (res->>'status')::int <> 200 then
+    raise exception 'تعذّر جلب المناطق من زاد (%)', res->>'status';
+  end if;
+
+  for z in select * from jsonb_array_elements(res->'body'->'zones') loop
+    v_order := v_order + 1;
+    -- مرتبطة سابقاً ← حدّث الاسم والأجرة
+    update public.delivery_zones
+       set name = z->>'name_ar', fee = (z->>'delivery_fee_iqd')::bigint
+     where zad_zone_id = z->>'id';
+    if not found then
+      -- بالاسم نفسه ← اربطها وخذ أجرة زاد (الزبون يدفع أجرة زاد للكابتن)
+      insert into public.delivery_zones (name, fee, sort_order, is_active, zad_zone_id)
+      values (z->>'name_ar', (z->>'delivery_fee_iqd')::bigint, v_order, true, z->>'id')
+      on conflict (name) do update
+        set zad_zone_id = excluded.zad_zone_id, fee = excluded.fee;
+    end if;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+-- ---- واجهة المدير ------------------------------------------------------
+create or replace function public.zad_status() returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  return jsonb_build_object(
+    'configured', public.zad_cfg('client_id') <> '' and public.zad_cfg('client_secret') <> '',
+    'dispatch',   public.zad_cfg('dispatch') = 'on',
+    'mode',       nullif(public.zad_cfg('mode'), ''),
+    'zones_linked', (select count(*) from public.delivery_zones where zad_zone_id is not null));
+end $$;
+
+create or replace function public.zad_set_dispatch(p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  perform public.zad_set('dispatch', case when p_on then 'on' else 'off' end);
+end $$;
+
+create or replace function public.zad_sync_zones() returns int
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  return public.zad_sync_zones_internal();
+end $$;
+
+/** استدعاء كابتن لطلب مؤكَّد وجاهز. الكابتن يدفع ثمن البضاعة عند المحل ويحصّله من الزبون. */
+create or replace function public.zad_dispatch(p_order_id uuid) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  o public.orders; v_zone public.delivery_zones; v_phone text; v_cash bigint;
+  v_attempt int; res jsonb; b jsonb; d jsonb; v_note text;
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  if public.zad_cfg('dispatch') <> 'on' then
+    raise exception 'استدعاء الكابتن مطفأ — أشعله من الإعدادات أولاً';
+  end if;
+
+  select * into o from public.orders where id = p_order_id for update;
+  if not found then raise exception 'الطلب غير موجود'; end if;
+  if o.status <> 'confirmed' then raise exception 'أكّد الطلب أولاً ثم استدعِ الكابتن عند جاهزيته'; end if;
+  if exists (select 1 from public.zad_deliveries
+              where order_id = o.id and status in ('searching','assigned','picked_up','on_hold')) then
+    raise exception 'يوجد كابتن مستدعى لهذا الطلب بالفعل';
+  end if;
+  if exists (select 1 from jsonb_array_elements(o.items_json) i where (i->>'price_on_request')::boolean) then
+    raise exception 'في الطلب بند بلا سعر — سعّره أولاً ليُعرف المبلغ الذي يحصّله الكابتن';
+  end if;
+
+  select * into v_zone from public.delivery_zones where name = o.delivery_zone;
+  if not found or v_zone.zad_zone_id is null then
+    raise exception 'منطقة «%» غير مرتبطة بزاد — حدّث المناطق أو اختر منطقة أخرى', o.delivery_zone;
+  end if;
+
+  v_phone := public.zad_canonical_phone(o.customer_phone);
+  if v_phone is null then raise exception 'رقم هاتف الزبون غير صالح للتوصيل: %', o.customer_phone; end if;
+
+  v_cash := o.total_amount - o.delivery_fee;           -- البضاعة فقط (بعد الخصم)
+  select count(*) + 1 into v_attempt from public.zad_deliveries where order_id = o.id;
+  v_note := left(trim(concat('طلب #', o.order_number, coalesce(' — ' || o.customer_note, ''))), 500);
+
+  res := public.zad_req('POST', '/v1/orders', jsonb_build_object(
+      'zone_id', v_zone.zad_zone_id,
+      'customer_name', left(o.customer_name, 120),
+      'customer_phone', v_phone,
+      'customer_note', v_note,
+      'cash_to_collect_iqd', v_cash,
+      'external_ref', o.order_number::text),
+    'rifai-' || o.order_number || '-' || v_attempt);
+
+  b := res->'body';
+  if (res->>'status')::int not in (200, 201) then
+    if coalesce(b->'error'->>'code', b->>'code') = 'zone_not_deliverable' then
+      perform public.zad_sync_zones_internal();
+      raise exception 'زاد لا توصّل لهذه المنطقة حالياً — حُدِّثت المناطق، جرّب مرة أخرى';
+    end if;
+    raise exception 'رفضت زاد الطلب (%): %', res->>'status', coalesce(b->'error'->>'message', b->>'message', b->'error'->>'code', b->>'code', b::text);
+  end if;
+
+  d := b->'drops'->0;
+  insert into public.zad_deliveries
+    (order_id, zad_order_id, summon_number, status, captain, cash_to_collect, delivery_fee, mode, notified_status)
+  values (o.id, b->>'id', b->>'summon_number', b->>'status', b->'captain', v_cash,
+          coalesce((d->>'delivery_fee_iqd')::bigint, v_zone.fee), coalesce(b->>'mode', 'live'), b->>'status');
+
+  perform public.zad_tg(format(E'📞 استُدعي كابتن زاد للطلب #%s\nالمنطقة: %s\nيحصّل من الزبون: %s + أجرة التوصيل %s\nرقم الاستدعاء: %s',
+    o.order_number, o.delivery_zone, to_char(v_cash, 'FM999,999,999'),
+    to_char(coalesce((d->>'delivery_fee_iqd')::bigint, v_zone.fee), 'FM999,999,999'), b->>'summon_number'));
+
+  return jsonb_build_object('summon_number', b->>'summon_number', 'status', b->>'status',
+                            'mode', b->>'mode', 'delivery_fee', coalesce((d->>'delivery_fee_iqd')::bigint, v_zone.fee));
+end $$;
+
+/** إلغاء الاستدعاء — ممكن فقط ما دامت زاد تبحث عن كابتن */
+create or replace function public.zad_cancel(p_order_id uuid) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare dv public.zad_deliveries; res jsonb;
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  select * into dv from public.zad_deliveries
+   where order_id = p_order_id and status in ('searching','assigned','picked_up','on_hold') for update;
+  if not found then raise exception 'لا استدعاء نشط لهذا الطلب'; end if;
+
+  res := public.zad_req('POST', '/v1/orders/' || dv.zad_order_id || '/cancel',
+                        jsonb_build_object('reason', 'ألغاه المتجر'));
+  if (res->>'status')::int = 409 then
+    raise exception 'قبله كابتن بالفعل — لا يُلغى من هنا، اتصل بزاد';
+  elsif (res->>'status')::int not in (200, 201) then
+    raise exception 'تعذّر الإلغاء عند زاد (%)', res->>'status';
+  end if;
+  update public.zad_deliveries
+     set status = 'cancelled', cancel_reason = 'ألغاه المتجر', updated_at = now()
+   where id = dv.id;
+end $$;
+
+-- ---- النبض: يتابع الرحلات المفتوحة كل دقيقة، ولا يتصل بزاد إن لم يكن شيء مفتوحاً
+create or replace function public.zad_poll() returns int
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  dv public.zad_deliveries; res jsonb; b jsonb; n int := 0; v_no bigint; msg text;
+begin
+  for dv in
+    select * from public.zad_deliveries
+     where status in ('searching','assigned','picked_up','on_hold')
+     order by created_at limit 20
+  loop
+    begin
+      res := public.zad_req('GET', '/v1/orders/' || dv.zad_order_id);
+      continue when (res->>'status')::int <> 200;
+      b := res->'body';
+
+      update public.zad_deliveries
+         set status = b->>'status', captain = b->'captain', summon_number = coalesce(b->>'summon_number', summon_number),
+             cancel_reason = b->>'cancel_reason', last_polled_at = now(), updated_at = now()
+       where id = dv.id;
+      n := n + 1;
+
+      if b->>'status' is distinct from dv.notified_status then
+        select order_number into v_no from public.orders where id = dv.order_id;
+        msg := case b->>'status'
+          when 'assigned'  then format(E'🛵 كابتن زاد بالطريق للمحل — طلب #%s\nرقم الاستدعاء: %s\nالكابتن: %s · %s',
+                                v_no, dv.summon_number, b->'captain'->>'name', coalesce(b->'captain'->>'phone', '—'))
+          when 'picked_up' then format('📦 استلم الكابتن الطلب #%s وهو بالطريق للزبون', v_no)
+          when 'delivered' then format('✅ سُلِّم الطلب #%s للزبون', v_no)
+          when 'failed'    then format('⚠️ فشل تسليم الطلب #%s (الزبون لا يردّ أو رفض) — اتصل به', v_no)
+          when 'cancelled' then format('⚠️ أُلغي استدعاء الطلب #%s%s', v_no,
+                                case when b->>'cancel_reason' = 'no_rider_found'
+                                     then ' — لم يقبله أي كابتن خلال ساعة، أعد الاستدعاء أو اتصل بالزبون' else '' end)
+          when 'on_hold'   then format('⏸ طلب #%s عند دعم زاد (استثناء) — لا إجراء منك', v_no)
+        end;
+        if msg is not null then perform public.zad_tg(msg); end if;
+        update public.zad_deliveries set notified_status = b->>'status' where id = dv.id;
+
+        if b->>'status' = 'delivered' then
+          update public.orders set status = 'delivered' where id = dv.order_id and status = 'confirmed';
+        end if;
+      end if;
+    exception when others then
+      -- متابعة رحلة واحدة لا تُسقط البقية
+      update public.zad_deliveries set last_polled_at = now() where id = dv.id;
+    end;
+  end loop;
+  return n;
+end $$;
+
+-- صلاحيات: الداخلي لا يصل إليه أحد من المتصفح
+revoke all on function public.zad_cfg(text), public.zad_set(text, text), public.zad_tg(text),
+  public.zad_token(boolean), public.zad_req(text, text, jsonb, text),
+  public.zad_sync_zones_internal(), public.zad_poll() from public, anon, authenticated;
+revoke all on function public.zad_status(), public.zad_set_dispatch(boolean), public.zad_sync_zones(),
+  public.zad_dispatch(uuid), public.zad_cancel(uuid) from public, anon;
+grant execute on function public.zad_status(), public.zad_set_dispatch(boolean), public.zad_sync_zones(),
+  public.zad_dispatch(uuid), public.zad_cancel(uuid) to authenticated;
+grant execute on function public.zad_canonical_phone(text) to authenticated, anon;
+
+-- النبض كل دقيقة (لا يتصل بزاد إن لم تكن رحلة مفتوحة)، ومزامنة المناطق ليلاً 03:00 بغداد
+select cron.unschedule(jobid) from cron.job where jobname in ('zad-poll', 'zad-zones');
+select cron.schedule('zad-poll', '* * * * *', $$select public.zad_poll()$$);
+select cron.schedule('zad-zones', '0 0 * * *',
+  $$select case when public.zad_cfg('client_id') <> '' then public.zad_sync_zones_internal() end$$);
+
+-- حفظ مفاتيح زاد من لوحة الإدارة (تُكتب ولا تُقرأ أبداً) وفحص الاتصال
+create or replace function public.zad_save_credentials(p_client_id text, p_client_secret text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  p_client_id := trim(p_client_id); p_client_secret := trim(p_client_secret);
+  if p_client_id !~ '^zad_(test|live)_[A-Za-z0-9]+$' then
+    raise exception 'client_id غير صالح — يبدأ بـ zad_test_ أو zad_live_';
+  end if;
+  if p_client_secret !~ '^zsk_(test|live)_[A-Za-z0-9_-]+$' then
+    raise exception 'client_secret غير صالح — يبدأ بـ zsk_test_ أو zsk_live_';
+  end if;
+  if substr(p_client_id, 5, 4) <> substr(p_client_secret, 5, 4) then
+    raise exception 'المفتاحان من وضعين مختلفين (test/live)';
+  end if;
+  perform public.zad_set('client_id', p_client_id);
+  perform public.zad_set('client_secret', p_client_secret);
+  perform public.zad_set('token', ''); perform public.zad_set('token_exp', '0'); perform public.zad_set('mode', '');
+  perform public.zad_set('dispatch', 'off');           -- مفتاح جديد = استدعاء مطفأ حتى تُشعله عمداً
+end $$;
+
+create or replace function public.zad_check() returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare res jsonb;
+begin
+  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  res := public.zad_req('GET', '/v1/me');
+  if (res->>'status')::int <> 200 then
+    raise exception 'فشل الفحص عند زاد (%)', res->>'status';
+  end if;
+  return jsonb_build_object(
+    'restaurant', res->'body'->'restaurant'->>'name',
+    'mode',       res->'body'->>'mode',
+    'live_riders', (res->'body'->>'live_riders')::boolean);
+end $$;
+
+revoke all on function public.zad_save_credentials(text, text), public.zad_check() from public, anon;
+grant execute on function public.zad_save_credentials(text, text), public.zad_check() to authenticated;

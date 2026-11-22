@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Plus, Trash2, Save, Check, Truck, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import ZadSettings from '../../components/ZadSettings'
 
 /** مناطق التوصيل وأجورها — يعدّلها المدير بلا برمجة */
 export default function Zones() {
@@ -124,6 +125,7 @@ export default function Zones() {
       </div>
 
       <TelegramSettings />
+      <ZadSettings onSynced={load} />
 
       {(count > 0 || saved) && (
         <div className="glass fixed inset-x-0 bottom-0 z-30 p-3">

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
+import ZadPanel from '../../components/ZadPanel'
 
 const STATUS = {
   new:       { label: 'جديد',   cls: 'bg-blue-50 text-blue-700 ring-blue-600/15' },
@@ -149,6 +150,8 @@ export default function Orders() {
                         <p className="rounded-xl bg-ink-50 p-2 text-xs text-ink-600">{o.customer_note}</p>
                       )}
                     </div>
+
+                    <ZadPanel order={o} />
 
                     <ul className="mb-3 grid gap-2">
                       {(o.items_json ?? []).map((it, i) => {
