@@ -48,7 +48,8 @@ export default function ZadSettings({ onSynced }) {
 
   const sync = async () => {
     const { error } = await run('sync', () => supabase.rpc('zad_sync_zones'),
-      (n) => `وصلت ${n} منطقة من زاد بأجورها.`)
+      (r) => `وصلت ${r.synced} منطقة من زاد بأجورها` +
+        (r.disabled ? `، وعُطِّلت ${r.disabled} منطقة ليست عند زاد.` : '.'))
     if (!error) onSynced?.()
   }
 

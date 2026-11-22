@@ -1007,6 +1007,12 @@ begin
   return null;
 end $$;
 
+create or replace function public.zad_label(p_order_id uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select case when source = 'mona' then 'المنى #' else '#' end || order_number
+    from public.orders where id = p_order_id;
+$$;
+
 create or replace function public.zad_tg(p_text text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
 declare v_token text; v_chat text;
@@ -1128,11 +1134,19 @@ begin
   perform public.zad_set('dispatch', case when p_on then 'on' else 'off' end);
 end $$;
 
-create or replace function public.zad_sync_zones() returns int
+-- بزرّ المدير: تُجلب المناطق وتُعطَّل التي ليست عند زاد (ما أجرته 0 — الاستلام من المحل — يبقى).
+-- المزامنة الليلية لا تعطّل شيئاً، فمنطقة يضيفها المدير يدوياً لا تختفي فجأة.
+drop function if exists public.zad_sync_zones();
+create or replace function public.zad_sync_zones() returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare n int; d int;
 begin
   if not public.is_admin() then raise exception 'للمدير فقط'; end if;
-  return public.zad_sync_zones_internal();
+  n := public.zad_sync_zones_internal();
+  update public.delivery_zones set is_active = false
+   where zad_zone_id is null and fee > 0 and is_active;
+  get diagnostics d = row_count;
+  return jsonb_build_object('synced', n, 'disabled', d);
 end $$;
 
 /** استدعاء كابتن لطلب مؤكَّد وجاهز. الكابتن يدفع ثمن البضاعة عند المحل ويحصّله من الزبون. */
@@ -1142,13 +1156,15 @@ declare
   o public.orders; v_zone public.delivery_zones; v_phone text; v_cash bigint;
   v_attempt int; res jsonb; b jsonb; d jsonb; v_note text;
 begin
-  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
   if public.zad_cfg('dispatch') <> 'on' then
     raise exception 'استدعاء الكابتن مطفأ — أشعله من الإعدادات أولاً';
   end if;
 
   select * into o from public.orders where id = p_order_id for update;
   if not found then raise exception 'الطلب غير موجود'; end if;
+  if not (public.is_admin() or (o.source = 'mona' and coalesce(public.is_mona_admin(), false))) then
+    raise exception 'غير مسموح';
+  end if;
   if o.status <> 'confirmed' then raise exception 'أكّد الطلب أولاً ثم استدعِ الكابتن عند جاهزيته'; end if;
   if exists (select 1 from public.zad_deliveries
               where order_id = o.id and status in ('searching','assigned','picked_up','on_hold')) then
@@ -1194,8 +1210,8 @@ begin
   values (o.id, b->>'id', b->>'summon_number', b->>'status', b->'captain', v_cash,
           coalesce((d->>'delivery_fee_iqd')::bigint, v_zone.fee), coalesce(b->>'mode', 'live'), b->>'status');
 
-  perform public.zad_tg(format(E'📞 استُدعي كابتن زاد للطلب #%s\nالمنطقة: %s\nيحصّل من الزبون: %s + أجرة التوصيل %s\nرقم الاستدعاء: %s',
-    o.order_number, o.delivery_zone, to_char(v_cash, 'FM999,999,999'),
+  perform public.zad_tg(format(E'📞 استُدعي كابتن زاد للطلب %s\nالمنطقة: %s\nيحصّل من الزبون: %s + أجرة التوصيل %s\nرقم الاستدعاء: %s',
+    public.zad_label(o.id), o.delivery_zone, to_char(v_cash, 'FM999,999,999'),
     to_char(coalesce((d->>'delivery_fee_iqd')::bigint, v_zone.fee), 'FM999,999,999'), b->>'summon_number'));
 
   return jsonb_build_object('summon_number', b->>'summon_number', 'status', b->>'status',
@@ -1205,9 +1221,12 @@ end $$;
 /** إلغاء الاستدعاء — ممكن فقط ما دامت زاد تبحث عن كابتن */
 create or replace function public.zad_cancel(p_order_id uuid) returns void
 language plpgsql security definer set search_path = public, extensions as $$
-declare dv public.zad_deliveries; res jsonb;
+declare dv public.zad_deliveries; res jsonb; v_src text;
 begin
-  if not public.is_admin() then raise exception 'للمدير فقط'; end if;
+  select source into v_src from public.orders where id = p_order_id;
+  if not (public.is_admin() or (v_src = 'mona' and coalesce(public.is_mona_admin(), false))) then
+    raise exception 'غير مسموح';
+  end if;
   select * into dv from public.zad_deliveries
    where order_id = p_order_id and status in ('searching','assigned','picked_up','on_hold') for update;
   if not found then raise exception 'لا استدعاء نشط لهذا الطلب'; end if;
@@ -1228,7 +1247,7 @@ end $$;
 create or replace function public.zad_poll() returns int
 language plpgsql security definer set search_path = public, extensions as $$
 declare
-  dv public.zad_deliveries; res jsonb; b jsonb; n int := 0; v_no bigint; msg text;
+  dv public.zad_deliveries; res jsonb; b jsonb; n int := 0; v_no text; msg text;
 begin
   for dv in
     select * from public.zad_deliveries
@@ -1247,17 +1266,17 @@ begin
       n := n + 1;
 
       if b->>'status' is distinct from dv.notified_status then
-        select order_number into v_no from public.orders where id = dv.order_id;
+        v_no := public.zad_label(dv.order_id);
         msg := case b->>'status'
-          when 'assigned'  then format(E'🛵 كابتن زاد بالطريق للمحل — طلب #%s\nرقم الاستدعاء: %s\nالكابتن: %s · %s',
+          when 'assigned'  then format(E'🛵 كابتن زاد بالطريق للمحل — طلب %s\nرقم الاستدعاء: %s\nالكابتن: %s · %s',
                                 v_no, dv.summon_number, b->'captain'->>'name', coalesce(b->'captain'->>'phone', '—'))
-          when 'picked_up' then format('📦 استلم الكابتن الطلب #%s وهو بالطريق للزبون', v_no)
-          when 'delivered' then format('✅ سُلِّم الطلب #%s للزبون', v_no)
-          when 'failed'    then format('⚠️ فشل تسليم الطلب #%s (الزبون لا يردّ أو رفض) — اتصل به', v_no)
-          when 'cancelled' then format('⚠️ أُلغي استدعاء الطلب #%s%s', v_no,
+          when 'picked_up' then format('📦 استلم الكابتن الطلب %s وهو بالطريق للزبون', v_no)
+          when 'delivered' then format('✅ سُلِّم الطلب %s للزبون', v_no)
+          when 'failed'    then format('⚠️ فشل تسليم الطلب %s (الزبون لا يردّ أو رفض) — اتصل به', v_no)
+          when 'cancelled' then format('⚠️ أُلغي استدعاء الطلب %s%s', v_no,
                                 case when b->>'cancel_reason' = 'no_rider_found'
                                      then ' — لم يقبله أي كابتن خلال ساعة، أعد الاستدعاء أو اتصل بالزبون' else '' end)
-          when 'on_hold'   then format('⏸ طلب #%s عند دعم زاد (استثناء) — لا إجراء منك', v_no)
+          when 'on_hold'   then format('⏸ طلب %s عند دعم زاد (استثناء) — لا إجراء منك', v_no)
         end;
         if msg is not null then perform public.zad_tg(msg); end if;
         update public.zad_deliveries set notified_status = b->>'status' where id = dv.id;
@@ -1275,6 +1294,13 @@ begin
 end $$;
 
 -- صلاحيات: الداخلي لا يصل إليه أحد من المتصفح
+drop policy if exists "zad_deliveries_mona" on public.zad_deliveries;
+create policy "zad_deliveries_mona" on public.zad_deliveries
+  for select using (
+    coalesce(public.is_mona_admin(), false)
+    and exists (select 1 from public.orders o where o.id = order_id and o.source = 'mona'));
+
+revoke all on function public.zad_label(uuid) from public, anon, authenticated;
 revoke all on function public.zad_cfg(text), public.zad_set(text, text), public.zad_tg(text),
   public.zad_token(boolean), public.zad_req(text, text, jsonb, text),
   public.zad_sync_zones_internal(), public.zad_poll() from public, anon, authenticated;
