@@ -156,7 +156,7 @@ export default function Catalog({ mode }) {
               {isWholesale ? 'أسعار الجملة' : 'أسعار المفرد'}
             </h1>
             <p className="mt-0.5 text-[13px] text-ink-600">
-              {isWholesale ? 'بالدرزن — أسعار أقل للكميات' : 'بالقطعة — للاستعمال الشخصي'}
+              {isWholesale ? 'بالدرزن' : 'بالقطعة — للاستعمال الشخصي'}
             </p>
           </div>
           {!loading && shown.length > 0 && (
