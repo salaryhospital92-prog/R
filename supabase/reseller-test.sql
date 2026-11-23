@@ -500,6 +500,24 @@ begin
   end loop;
   perform pg_temp.fails(format('select public.reseller_create_order(''store-a'', ''زبون'', ''07811111111'', jsonb_build_array(pg_temp.item(''P'', 1)), %s)', zone), 'مشغول', '8ق الحادي والثلاثون للمتجر');
   perform pg_temp.out();
+  -- المتجر ممتلئ (30): الملغى لا يُعدّ، ومن استلم سابقاً من المتجر يطلب، وغيرهما لا (الحالة تُقلب بلا أزرار ثم تُعاد)
+  alter table public.orders disable trigger user;
+  update public.orders set status = 'cancelled' where source = 'reseller' and customer_phone = '07800000002';
+  alter table public.orders enable trigger user;
+  perform pg_temp.as_('anon');
+  perform pg_temp.runs(format('select public.reseller_create_order(''store-a'', ''زبون'', ''07822222222'', jsonb_build_array(pg_temp.item(''P'', 1)), %s)', zone), '8ق2 الملغى لا يُعدّ من حدّ المتجر');
+  perform pg_temp.fails(format('select public.reseller_create_order(''store-a'', ''زبون'', ''07811111111'', jsonb_build_array(pg_temp.item(''P'', 1)), %s)', zone), 'مشغول', '8ق3 وعاد الحدّ ممتلئاً لغير المستلِمين');
+  perform pg_temp.out();
+  alter table public.orders disable trigger user;
+  update public.orders set status = 'delivered' where source = 'reseller' and customer_phone = '07800000001';
+  alter table public.orders enable trigger user;
+  perform pg_temp.as_('anon');
+  perform pg_temp.runs(format('select public.reseller_create_order(''store-a'', ''زبون'', ''07800000001'', jsonb_build_array(pg_temp.item(''P'', 1)), %s)', zone), '8ق4 من استلم سابقاً يطلب والمتجر ممتلئ');
+  perform pg_temp.fails(format('select public.reseller_create_order(''store-a'', ''زبون'', ''07811111111'', jsonb_build_array(pg_temp.item(''P'', 1)), %s)', zone), 'مشغول', '8ق5 وغيره ممنوع');
+  perform pg_temp.out();
+  alter table public.orders disable trigger user;
+  update public.orders set status = 'new' where source = 'reseller' and customer_phone in ('07800000001', '07800000002');
+  alter table public.orders enable trigger user;
   update public.orders set created_at = created_at - interval '2 hours' where source = 'reseller';
 
   -- زبون مسجَّل الدخول بلا صفّ profiles
@@ -672,7 +690,7 @@ begin
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
     'reseller_create_order reseller_store reseller_store_products', '11هـ دوال anon');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('authenticated', p.oid, 'execute')),
-    'reseller_adjust reseller_balance reseller_can_edit reseller_cancel_payout reseller_catalog reseller_create_order reseller_decide_store reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
+    'reseller_adjust reseller_balance reseller_can_edit reseller_cancel_payout reseller_catalog reseller_create_order reseller_decide_store reseller_logo_count reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
     '11و دوال authenticated');
   perform pg_temp.want(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'reseller%' and p.prosecdef and not coalesce(p.proconfig::text ~ 'search_path', false)), '11ز كل دالة definer لها search_path');
 
@@ -777,7 +795,9 @@ begin
     perform pg_temp.out();
   end loop;
   perform pg_temp.as_('anon');
-  perform pg_temp.eq((select string_agg(k, ',' order by k) from jsonb_object_keys(public.reseller_store('store-a')) k), 'about,logo_path,name,open,slug,theme_color,whatsapp', '11أج الواجهة بلا مالك ولا هاتف خاص');
+  perform pg_temp.eq((select string_agg(k, ',' order by k) from jsonb_object_keys(public.reseller_store('store-a')) k), 'about,logo_path,name,open,slug,theme_color,whatsapp,zones', '11أج الواجهة بلا مالك ولا هاتف خاص');
+  perform pg_temp.want(exists (select 1 from jsonb_array_elements(public.reseller_store('store-a')->'zones') z where z->>'name' = 'منطقة فحص زاد' and (z->>'fee')::int = 2000)
+    and not exists (select 1 from jsonb_array_elements(public.reseller_store('store-a')->'zones') z where z->>'name' in ('استلام فحص', 'استلام من المحل')), '11أج2 المناطق: زاد فقط بلا الاستلام من المحل');
   perform pg_temp.out();
 
   -- ح) الشعارات
@@ -788,6 +808,15 @@ begin
   perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''product-images'', %L)', pg_temp.f('A') || '/x.png'), 'row-level security', '11أو ولا في صور الرفاعي');
   perform pg_temp.as_('anon');
   perform pg_temp.fails('insert into storage.objects (bucket_id, name) values (''reseller-logos'', ''x/logo.png'')', 'row-level security', '11أز anon لا يرفع');
+  perform pg_temp.out();
+  -- سقف الشعارات: 5 لكل مستخدم، والحذف ثم الرفع يعمل، ومستخدم آخر لا يتأثر
+  perform pg_temp.as_('authenticated', pg_temp.f('A'));
+  for i in 2..5 loop insert into storage.objects (bucket_id, name) values ('reseller-logos', pg_temp.f('A') || '/l' || i || '.png'); end loop;
+  perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''reseller-logos'', %L)', pg_temp.f('A') || '/l6.png'), 'row-level security', '11ب1 السادس ممنوع');
+  delete from storage.objects where bucket_id = 'reseller-logos' and name = pg_temp.f('A') || '/l2.png';
+  perform pg_temp.runs(format('insert into storage.objects (bucket_id, name) values (''reseller-logos'', %L)', pg_temp.f('A') || '/l6.png'), '11ب2 الحذف ثم الرفع يعمل');
+  perform pg_temp.as_('authenticated', pg_temp.f('B'));
+  perform pg_temp.runs(format('insert into storage.objects (bucket_id, name) values (''reseller-logos'', %L)', pg_temp.f('B') || '/logo.png'), '11ب3 سقف مستخدم لا يمسّ غيره');
   perform pg_temp.out();
   perform pg_temp.eq((select file_size_limit || array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'reseller-logos'), '1048576image/png,image/jpeg,image/webp', '11أح حدود الحاوية');
 

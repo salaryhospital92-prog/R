@@ -326,8 +326,19 @@ values ('reseller-logos', 'reseller-logos', true, 1048576, array['image/png', 'i
 on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
+-- سقف 5 ملفات لكل مستخدم: بلا سقف يملأ أي مسجَّل التخزين. دالة بدل trigger على storage.objects
+-- (الجدول ملك خدمة التخزين فقد لا يُسمح بـtrigger عليه). الحذف ثم الرفع يبقى ممكناً.
+create or replace function public.reseller_logo_count() returns int
+language sql stable security definer set search_path = public, storage as $$
+  select count(*)::int from storage.objects
+   where bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text
+$$;
+revoke all on function public.reseller_logo_count() from public, anon;
+grant execute on function public.reseller_logo_count() to authenticated;
+
 create policy reseller_logos_insert on storage.objects for insert to authenticated
-  with check (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text);
+  with check (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text
+              and (select public.reseller_logo_count()) < 5);
 create policy reseller_logos_update on storage.objects for update to authenticated
   using (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text)
   with check (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text);

@@ -10,7 +10,8 @@ export const read = (p) => readFileSync(new URL(p, root), 'utf8').replace(/\r\n/
 /** مسودة أو ملف مُعتمد بنفس الاسم */
 export const migration = (n) => read(`supabase/migrations/${n}.sql` + (existsSync(new URL(`supabase/migrations/${n}.sql`, root)) ? '' : '.draft'))
 
-const name = `rafai-check-${process.pid}`
+// الفحوص: اسم بالعملية وبلا شبكة. reseller/dev/stack.mjs يمرّر اسماً وشبكة داخلية (internal) لقاعدة التجربة اليدوية.
+const name = process.env.RAFAI_DB_NAME ?? `rafai-check-${process.pid}`
 const docker = (args, input) => spawnSync('docker', args, { input, encoding: 'utf8', maxBuffer: 64e6 })
 const psqlArgs = ({ user = 'postgres', tx = false } = {}) => ['exec', '-i', '-e', 'PGPASSWORD=local', '-e', 'PGCLIENTENCODING=UTF8', name,
   'psql', '-h', '127.0.0.1', '-U', user, '-d', 'postgres', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', ...(tx ? ['-1'] : []), '-f', '-']
@@ -54,7 +55,7 @@ update public.product_prices set price_dozen = 102000, price_retail = 10000
  where product_id = (select id from public.products where name = 'عطر Exotic_for man');`
 
 export function start() {
-  must('docker run', docker(['run', '-d', '--name', name, '--network', 'none', '-e', 'POSTGRES_PASSWORD=local', IMAGE]))
+  must('docker run', docker(['run', '-d', '--name', name, '--network', process.env.RAFAI_DB_NETWORK ?? 'none', '-e', 'POSTGRES_PASSWORD=local', IMAGE]))
   // التهيئة تعيد التشغيل مرة: ننتظر نجاحين متتاليين عبر TCP
   for (let ok = 0, i = 0; ok < 2; i++) {
     if (i > 90) throw new Error('القاعدة المحلية لم تجهز')

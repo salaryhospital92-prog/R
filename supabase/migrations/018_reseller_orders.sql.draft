@@ -86,7 +86,11 @@ create or replace function public.reseller_store(p_slug text) returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object('slug', slug, 'name', name, 'logo_path', logo_path, 'theme_color', theme_color,
                             'about', about, 'whatsapp', whatsapp,
-                            'open', coalesce(public.reseller_cfg('reseller_orders_enabled') = 'on', false))
+                            'open', coalesce(public.reseller_cfg('reseller_orders_enabled') = 'on', false),
+                            -- مناطق زاد فقط (كما يشترطها reseller_create_order): «الاستلام من المحل» يكشف الرفاعي
+                            'zones', coalesce((select jsonb_agg(jsonb_build_object('id', z.id, 'name', z.name, 'fee', z.fee)
+                                                              order by z.sort_order, z.id)
+                                                 from public.delivery_zones z where z.is_active and z.zad_zone_id is not null), '[]'::jsonb))
     from public.reseller_stores where slug = lower(p_slug) and status = 'active'
 $$;
 
@@ -143,8 +147,12 @@ begin
        and public.zad_canonical_phone(o.customer_phone) = v_phone) >= 5 then
     raise exception 'طلبات كثيرة من هذا الرقم — حاول لاحقاً';
   end if;
-  if (select count(*) from public.orders o where o.reseller_store_id = v_store.id
-       and o.created_at > now() - interval '1 hour') >= 30 then
+  -- حد المتجر 30/ساعة يحميه من الإغراق، لكن لا يُعطِّله: الملغى لا يُعدّ (يفرّغه الموظف)،
+  -- ومن سبق أن استلم من هذا المتجر يطلب دائماً (حدّ الهاتف 5/ساعة يبقى عليه)
+  if (select count(*) from public.orders o where o.reseller_store_id = v_store.id and o.status <> 'cancelled'
+       and o.created_at > now() - interval '1 hour') >= 30
+     and not exists (select 1 from public.orders o where o.reseller_store_id = v_store.id and o.status = 'delivered'
+       and public.zad_canonical_phone(o.customer_phone) = v_phone) then
     raise exception 'المتجر مشغول الآن — حاول لاحقاً';
   end if;
 

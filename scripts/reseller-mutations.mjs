@@ -34,7 +34,8 @@ export const MUTATIONS = [
   ['قيد رقم البطاقة', S, "else account_no ~ '^\\d{6,15}$' end)", "else account_no ~ '^\\d{6,30}$' end)", '10هـ'],
   ['رابط محجوز/انتحال', S, "and p !~ 'rifa(i|e|y)|refai|rafai|alrifa' ", 'and true ', '9أ'],
   ['حد طلبات التوفير', S, ">= 20 then", '>= 2000 then', '11أم'],
-  ['مجلد الشعار', S, "create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text);", "create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check (bucket_id = 'reseller-logos');", '11أد'],
+  ['مجلد الشعار', S, "create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check (bucket_id = 'reseller-logos' and (storage.foldername(name))[1] = auth.uid()::text", "create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check (bucket_id = 'reseller-logos'", '11أد'],
+  ['سقف الشعارات', S, "\n              and (select public.reseller_logo_count()) < 5);", ');', '11ب1'],
   ['شعارات: bucket غيره', S, "create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check (bucket_id = 'reseller-logos' and (", 'create policy reseller_logos_insert on storage.objects for insert to authenticated\n  with check ((', '11أو'],
 
   // --- الطلب والسعر ---
@@ -60,6 +61,9 @@ export const MUTATIONS = [
   ['الكميات الفاسدة', O, "if v_ok is not true then raise exception 'x'; end if;", '', '8م'],
   ['المجموع المتوقع', O, 'if p_expected_total is not null and p_expected_total <> v_sell + v_zone.fee then', 'if false then', '8ن'],
   ['حد الهاتف', O, 'and public.zad_canonical_phone(o.customer_phone) = v_phone) >= 5', 'and o.customer_phone = p_customer_phone) >= 5', '8ص'],
+  ['الملغى يُعدّ من حد المتجر', O, "o.reseller_store_id = v_store.id and o.status <> 'cancelled'", 'o.reseller_store_id = v_store.id', '8ق2'],
+  ['المستلِم سابقاً يُحجب', O, "and not exists (select 1 from public.orders o where o.reseller_store_id = v_store.id and o.status = 'delivered'", "and not exists (select 1 from public.orders o where false and o.reseller_store_id = v_store.id and o.status = 'delivered'", '8ق4'],
+  ['المناطق تشمل الاستلام من المحل', O, 'from public.delivery_zones z where z.is_active and z.zad_zone_id is not null', 'from public.delivery_zones z where z.is_active', '11أج2'],
   ['حد المتجر', O, "and o.created_at > now() - interval '1 hour') >= 30", "and o.created_at > now() - interval '1 hour') >= 300", '8ق'],
   ['created_by فارغ', O, "'طلب متجر ' || v_store.slug || ' #' || v_order.order_number, null", "'طلب متجر ' || v_store.slug || ' #' || v_order.order_number, auth.uid()", '8ر'],
   ['الأساس يتسرّب في items_json', O, "'price_on_request', false);", "'price_on_request', false, 'base', l.base_total);", '8ط'],
