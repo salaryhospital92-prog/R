@@ -29,7 +29,7 @@ export function buildOrderMessage(order) {
     lines.push(
       it.price_on_request
         ? `${i + 1}. ${it.name} — ${qty} — السعر عند الطلب`
-        : `${i + 1}. ${it.name} — ${qty} × ${formatIQD(it.unit_price)} = ${formatIQD(it.line_total)}`,
+        : `${i + 1}. ${it.name} — ${qty} × ${formatIQD(it.dozen_price ?? it.unit_price)}${it.dozen_price != null ? ' للدرزن' : ''} = ${formatIQD(it.line_total)}`,
     )
     // سطر التمييز: أسماء كثيرة متطابقة، والرمز والباركود يفصلان بينها.
     // الطلبات القديمة لا تحمل الرمز — يُتخطّى السطر عندها بلا كسر.

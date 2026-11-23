@@ -54,15 +54,11 @@ export default function ProductEditor() {
   // وحدة إدخال سعر الجملة — مستقلّة عن وحدة البيع عمداً:
   // الأولى «كيف تكتب السعر»، والثانية «كيف يشتري الزبون».
   const priceByDozen = form.price_unit !== 'piece'
-  const wholesalePerPiece = Math.round((Number(prices.price_wholesale) || 0) / (priceByDozen ? 12 : 1))
+  const dozenPrice = Math.round(Number(prices.price_wholesale) || 0) * (priceByDozen ? 1 : 12)
+  const retailPrice = Number(prices.price_retail) || 0
 
-  /** تبديل الوحدة يحوّل الرقم ولا يغيّر السعر الحقيقي */
-  const switchPriceUnit = (unit) => {
-    if (unit === form.price_unit) return
-    const piece = Math.round((Number(prices.price_wholesale) || 0) / (priceByDozen ? 12 : 1))
-    setForm({ ...form, price_unit: unit })
-    setPrices({ ...prices, price_wholesale: String(unit === 'dozen' ? piece * 12 : piece) })
-  }
+  /** تبديل الوحدة يغيّر معنى الرقم ولا يغيّر الرقم المكتوب */
+  const switchPriceUnit = (unit) => setForm({ ...form, price_unit: unit })
 
   useEffect(() => {
     supabase.from('categories').select('id, name').eq('store', 'rifai').order('sort_order')
@@ -72,7 +68,7 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, product_prices(price_retail, price_wholesale)'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, product_prices(price_retail, price_dozen)'
       : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
@@ -93,9 +89,9 @@ export default function ProductEditor() {
         if (data.product_prices) {
           setPrices({
             price_retail: String(data.product_prices.price_retail ?? 0),
-            // الجملة تُخزَّن للقطعة وتُعرض بوحدة المنتج المحفوظة
-            price_wholesale: String((data.product_prices.price_wholesale ?? 0)
-              * ((data.price_unit ?? 'dozen') === 'piece' ? 1 : 12)),
+            // كما أُدخل: ثمن الدرزن، أو القطعة (مخزَّنة × 12) إن كانت وحدة الإدخال قطعة
+            price_wholesale: String((data.product_prices.price_dozen ?? 0)
+              / ((data.price_unit ?? 'dozen') === 'piece' ? 12 : 1)),
           })
         }
       }
@@ -198,11 +194,10 @@ export default function ProductEditor() {
       }
 
       if (isAdmin && (prices.price_retail !== '' || prices.price_wholesale !== '')) {
-        const entered = Math.max(0, Number(prices.price_wholesale) || 0)
         const { error } = await supabase.from('product_prices').upsert({
           product_id: productId,
           price_retail: Math.max(0, Math.round(Number(prices.price_retail) || 0)),
-          price_wholesale: priceByDozen ? Math.round(entered / 12) : Math.round(entered),
+          price_dozen: Math.max(0, dozenPrice),
           updated_at: new Date().toISOString(),
         })
         if (error) throw error
@@ -471,13 +466,13 @@ export default function ProductEditor() {
 
           {Number(prices.price_wholesale) > 0 && (
             <p className="col-span-2 rounded-lg bg-brand-50 px-3 py-2 text-center text-xs font-bold text-brand-900">
-              الدرزن {formatNumber(wholesalePerPiece * 12)} د.ع · القطعة {formatNumber(wholesalePerPiece)} د.ع
+              المفرد {formatNumber(retailPrice)} د.ع للقطعة · الجملة {formatNumber(dozenPrice)} د.ع للدرزن
             </p>
           )}
-          {wholesalePerPiece > 0 && Number(prices.price_retail) > 0 && wholesalePerPiece >= Number(prices.price_retail) && (
+          {dozenPrice > 0 && retailPrice > 0 && (dozenPrice >= retailPrice * 12 || dozenPrice <= retailPrice * 6) && (
             <p className="col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-warn-600">
-              ⚠️ سعر الجملة للقطعة ({formatNumber(wholesalePerPiece)}) ليس أقل من سعر المفرد
-              ({formatNumber(Number(prices.price_retail))}) — تأكد أنك أدخلت <b>سعر الدرزن</b> لا سعر القطعة.
+              ⚠️ ثمن الدرزن ({formatNumber(dozenPrice)}) لا يتناسب مع 12 قطعة بالمفرد
+              ({formatNumber(retailPrice * 12)}) — تأكد من الوحدة المختارة.
             </p>
           )}
           <p className="col-span-2 text-xs text-ink-600">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>

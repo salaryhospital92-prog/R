@@ -4,6 +4,7 @@ import {
   ArrowRight, Trash2, Loader2, CheckCircle2, Truck, ImageOff, Plus, Minus, Copy, Check,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { priceOf, lineTotal } from '../../lib/price'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
 import { buildOrderMessage } from '../../lib/orderText'
@@ -42,8 +43,7 @@ export default function Checkout() {
 
   if (!cart.mode) return <Navigate to="/" replace />
 
-  const priceOf = (p) => (isWholesale ? p.price_wholesale : p.price_retail)
-  const subtotal = products.reduce((s, p) => s + (cart.items[p.id] ?? 0) * priceOf(p), 0)
+    const subtotal = products.reduce((s, p) => s + lineTotal(p, cart.mode, cart.items[p.id] ?? 0), 0)
   const zone = zones.find((z) => String(z.id) === form.zoneId)
   const total = subtotal + (zone?.fee ?? 0)
 
@@ -163,7 +163,7 @@ export default function Checkout() {
       <main className="grid gap-2 p-3">
         {products.map((p) => {
           const qty = cart.items[p.id] ?? 0
-          const price = priceOf(p)
+          const price = priceOf(p, cart.mode)
           const step = stepFor(cart.mode, p.sold_by)
           const byDozen = step === 12
           const maxQty = Math.floor(p.quantity_single / step) * step
@@ -178,10 +178,10 @@ export default function Checkout() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.name}</p>
                   <p className="text-xs text-ink-600">
-                    {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} للقطعة`}
+                    {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} ${byDozen ? 'للدرزن' : 'للقطعة'}`}
                   </p>
                   <p className="text-sm font-extrabold text-brand-700">
-                    {price === 0 ? '—' : formatIQD(price * qty)}
+                    {price === 0 ? '—' : formatIQD(lineTotal(p, cart.mode, qty))}
                   </p>
                 </div>
                 <button type="button" onClick={() => cart.setQty(p.id, 0)} className="rounded-lg p-2 text-danger-700 hover:bg-red-50" aria-label="حذف">

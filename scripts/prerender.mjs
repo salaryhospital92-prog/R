@@ -35,7 +35,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const db = createClient(url, key, { auth: { persistSession: false } })
 const { data: products, error } = await db
   .from('storefront_products')
-  .select('code, name, category, image_url, price_retail, price_wholesale, in_stock')
+  .select('code, name, category, image_url, price_retail, price_wholesale, price_dozen, sold_by, in_stock')
 
 if (error) {
   console.log('تعذّر جلب المنتجات:', error.message, '— تخطّي التوليد')
@@ -58,7 +58,9 @@ for (const p of products ?? []) {
   const desc = [
     p.category,
     priceText,
-    p.price_wholesale > 0 ? `الجملة ${iqd(p.price_wholesale)} للقطعة` : null,
+    p.sold_by === 'piece'
+      ? (p.price_wholesale > 0 ? `الجملة ${iqd(p.price_wholesale)} للقطعة` : null)
+      : (p.price_dozen > 0 ? `الجملة ${iqd(p.price_dozen)} للدرزن` : null),
     p.in_stock ? 'متوفر الآن' : 'غير متوفر حالياً',
     'توصيل لكل المحافظات — اطلب عبر واتساب.',
   ].filter(Boolean).join(' · ')

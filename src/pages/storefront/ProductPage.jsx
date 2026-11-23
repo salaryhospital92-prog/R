@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart, stepFor } from '../../context/CartContext'
+import { priceOf, lineTotal } from '../../lib/price'
 import { STORE, contactWhatsappUrl, asset } from '../../lib/store'
 import ContactCard from '../../components/ContactCard'
 import SideMenu from '../../components/SideMenu'
@@ -50,7 +51,7 @@ export default function ProductPage() {
 
   const step = stepFor(mode, product.sold_by)
   const byDozen = step === 12
-  const price = mode === 'wholesale' ? product.price_wholesale : product.price_retail
+  const price = priceOf(product, mode)
   const onRequest = price === 0
   const soldOut = product.quantity_single <= 0
   const maxQty = Math.floor(product.quantity_single / step) * step
@@ -152,7 +153,7 @@ export default function ProductPage() {
                 <>
                   <p className="price-xl text-brand-800">{formatIQD(price)}</p>
                   <p className="mt-1 text-xs leading-relaxed text-ink-600">
-                    للقطعة {byDozen && `· الدرزن ${formatIQD(price * 12)}`}
+                    {byDozen ? 'سعر الدرزن (12 قطعة)' : 'للقطعة'}
                   </p>
                 </>
               )}
@@ -172,7 +173,7 @@ export default function ProductPage() {
                 </button>
                 <span className="font-extrabold">
                   {byDozen ? `${formatNumber(safeQty / 12)} درزن` : `${formatNumber(safeQty)} قطعة`}
-                  {!onRequest && <span className="block text-xs font-normal text-ink-600">{formatIQD(price * safeQty)}</span>}
+                  {!onRequest && <span className="block text-xs font-normal text-ink-600">{formatIQD(lineTotal(product, mode, safeQty))}</span>}
                 </span>
                 <button onClick={() => setQty(Math.min(safeQty + step, maxQty))} disabled={safeQty >= maxQty}
                         className="flex size-11 items-center justify-center rounded-xl bg-white shadow-sm active:scale-90 disabled:opacity-40" aria-label="زيادة">

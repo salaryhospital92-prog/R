@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Minus, ImageOff, AlertTriangle, Tag } from 'lucide-react'
 import { formatIQD, formatNumber } from '../lib/format'
 import { stepFor } from '../context/CartContext'
+import { priceOf } from '../lib/price'
 
 /**
  * بطاقة منتج في المعروض.
@@ -12,7 +13,7 @@ import { stepFor } from '../context/CartContext'
 export default function ProductCard({ product, mode, qty, onChange, index = 0 }) {
   const step = stepFor(mode, product.sold_by)
   const byDozen = step === 12
-  const price = mode === 'wholesale' ? product.price_wholesale : product.price_retail
+  const price = priceOf(product, mode)
   const onRequest = price === 0
   const soldOut = product.quantity_single <= 0
   const maxQty = Math.floor(product.quantity_single / step) * step
@@ -66,7 +67,7 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
         )}
         {!onRequest && mode === 'wholesale' && (
           <p className="tnum mt-1 text-[11px] text-ink-600">
-            {byDozen ? `الدرزن ${formatIQD(price * 12)}` : 'يُباع بالقطعة'}
+            {byDozen ? 'سعر الدرزن (12 قطعة)' : 'يُباع بالقطعة'}
           </p>
         )}
 
