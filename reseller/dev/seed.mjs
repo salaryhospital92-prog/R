@@ -64,7 +64,7 @@ export function seedSql() {
   const users = [[OWNER, 'owner'], ['00000000-0000-4000-8000-0000000000a2', 'two'], ['00000000-0000-4000-8000-0000000000a3', 'three'], ['00000000-0000-4000-8000-0000000000a4', 'four']]
   return `
 insert into auth.users (id, aud, role, email, email_confirmed_at, created_at) values
-  ${users.map(([id, k]) => `('${id}', 'authenticated', 'authenticated', '${k}@dev.invalid', now(), now())`).join(',\n  ')};
+  ${users.map(([id, k]) => `('${id}', 'authenticated', 'authenticated', '${k === 'owner' ? 'tg111@telegram.invalid' : k + '@dev.invalid'}', now(), now())`).join(',\n  ')};
 
 insert into public.categories (id, name) values (9101, 'عطور'), (9102, 'عناية بالبشرة'), (9103, 'منزل ومستلزمات'), (9104, 'إكسسوارات');
 
@@ -93,5 +93,19 @@ insert into public.reseller_stores (owner_id, slug, name, logo_path, theme_color
   ('${users[3][0]}', 'review-shop', 'متجر قيد المراجعة', null, '#be123c', '9647700000005', null, null, 'pending', 'percent', 20, 250);
 insert into public.reseller_categories (store_id, category_id)
   select s.id, c from public.reseller_stores s, unnest(array[9101, 9102, 9103]) c;
+
+-- مالك «متجر النور» يدخل بتيليغرام برقم 111 (محاكي التطوير). كل من عداه يبدأ من المعالج.
+insert into public.reseller_identities (telegram_id, user_id, name, phone) values (111, '${OWNER}', 'صاحب متجر النور', '9647700000001');
+update public.app_settings set value = '0' where key = 'reseller_hold_days';   -- التجربة: الربح يصير متاحاً فور التسليم
+
+-- ثلاثة طلبات حقيقية عبر الدالة العلنية: اثنان يُسلَّمان (ربح متاح) وواحد جديد
+do $$ declare c jsonb; begin
+  set local role anon;
+  perform public.reseller_create_order('noor-store', 'سارة كريم', '07711000001', jsonb_build_array(jsonb_build_object('product_id', md5('dev-p1')::uuid, 'qty', 2)), 1);
+  perform public.reseller_create_order('noor-store', 'أحمد علي', '07711000002', jsonb_build_array(jsonb_build_object('product_id', md5('dev-p10')::uuid, 'qty', 12), jsonb_build_object('product_id', md5('dev-p8')::uuid, 'qty', 3)), 4);
+  perform public.reseller_create_order('noor-store', 'زبون جديد', '07711000003', jsonb_build_array(jsonb_build_object('product_id', md5('dev-p5')::uuid, 'qty', 1)), 12, 'قرب المدرسة');
+end $$;
+reset role;
+update public.orders set status = 'delivered' where customer_phone in ('07711000001', '07711000002');
 `
 }

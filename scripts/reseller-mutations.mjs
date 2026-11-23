@@ -1,5 +1,5 @@
 // كل حارس يُكسر مرة ويجب أن يسقط فحصه هو: [ما كُسر, الملف, النص, بديله, بداية اسم الفحص المتوقع]
-const S = '017_reseller_schema', O = '018_reseller_orders', M = '019_reseller_money', R = '020_reseller_reports'
+const S = '017_reseller_schema', O = '018_reseller_orders', M = '019_reseller_money', R = '020_reseller_reports', L = '021_reseller_login'
 
 export const MUTATIONS = [
   // --- المخطط والصلاحيات ---
@@ -85,6 +85,21 @@ export const MUTATIONS = [
   ['الإشعار يُسقط العملية', O, 'exception when others then null;\nend $$;\n\n-- ----', 'end $$;\n\n-- ----', '9هـ3'],
   ['رمز تيليغرام يُعاد', O, 'set chat_id = p_chat_id, code = null, code_expires_at = null,', 'set chat_id = p_chat_id,', '11أك'],
   ['دالة داخلية متاحة لـanon', O, 'grant execute on function public.reseller_store(text),', 'grant execute on function public.reseller_lines(uuid, uuid, int), public.reseller_store(text),', '11هـ'],
+
+  // --- الدخول والبدء السريع (021) ---
+  ['مطابقة الرقم', L, "if p_pick is distinct from l.number then", "if false then", '14ع'],
+  ['رقم خاطئ لا يُلغي', L, "update public.reseller_logins set state = 'failed' where nonce = p_nonce;\n    return 'wrong';", "return 'wrong';", '14ف'],
+  ['جهة اتصال غيرك', L, "if p_contact_user_id is distinct from p_telegram_id then return 'not_yours'; end if;", "", '14ح'],
+  ['سرّ الصفحة', L, "l.secret_hash is distinct from p_hash or ", "", '14ج'],
+  ['الحاجز الأول', L, "if not found or l.state <> 'waiting' or l.expires_at <= now() then return null; end if;", "if not found or l.expires_at <= now() then return null; end if;", '14هـ'],
+  ['غير الحاجز يؤكد', L, "or l.telegram_id is distinct from p_telegram_id then return 'expired'; end if;", "then return 'expired'; end if;", '14و'],
+  ['الجلسة مرة واحدة', L, "update public.reseller_logins set state = 'done' where nonce = p_nonce;\n  return jsonb_build_object('status', 'ok',", "return jsonb_build_object('status', 'ok',", '14ل'],
+  ['حدّ محاولات الدخول', L, "interval '1 minute') >= 100 then", "interval '1 minute') >= 100000 then", '14ر'],
+  ['دوال الدخول للمتصفح', L, "grant execute on function public.reseller_login_new(text), public.reseller_login_claim", "grant execute on function public.reseller_login_new(text) to anon;\ngrant execute on function public.reseller_login_new(text), public.reseller_login_claim", '11هـ'],
+  ['كل الأصناف افتراضياً', L, "where c.store = 'rifai' and exists (select 1 from public.products p where p.category_id = c.id and p.is_active and p.store = 'rifai');", "where false;", '14أأ'],
+  ['هاتف موثَّق للبدء', L, "if i.phone is null then raise exception 'شارك رقمك من تيليغرام أولاً'; end if;", "", '14خ'],
+  ['الدخول يربط الإشعارات', L, "insert into public.reseller_telegram (store_id, chat_id, linked_at) values (v_id, i.telegram_id, now())\n  on conflict do nothing;", "", '14أب'],
+  ['الرابط المتكرر', L, "and not exists (select 1 from public.reseller_stores where slug = c)", "", '14أو'],
 
   // --- المال ---
   ['المهلة', M, "now() + make_interval(secs => (public.reseller_num('reseller_hold_days', 3) * 86400)::double precision)", 'now()', '1ك'],

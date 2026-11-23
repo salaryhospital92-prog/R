@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 // هوية المتجر من النطاق الفرعي (متجر.النطاق أو متجر.localhost)، وبديل التطوير /s/:slug.
-const ROOT = (import.meta.env.VITE_ROOT_DOMAIN || '').toLowerCase()
+import { ROOT } from './config'
 const SLUG_RE = /^[a-z0-9](-?[a-z0-9]){2,29}$/
 
 function locate() {

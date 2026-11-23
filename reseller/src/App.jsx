@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Store, WifiOff } from 'lucide-react'
-import { getProducts, getStore, logoUrl } from './lib/api'
+import { getProducts, getStore } from './lib/api'
+import { logoUrl } from './lib/config'
 import { reconcile, useCart } from './lib/cart'
 import { slugOk, useLocation } from './lib/route'
 import { ShopContext } from './lib/shop'

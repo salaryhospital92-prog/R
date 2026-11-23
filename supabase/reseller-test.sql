@@ -685,12 +685,12 @@ begin
       case when has_any_column_privilege('authenticated', c.oid, 'insert') then 'a' end, case when has_any_column_privilege('authenticated', c.oid, 'update') then 'w' end,
       case when has_table_privilege('authenticated', c.oid, 'delete') then 'd' end), ' ' order by c.relname)
      from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'),
-    'reseller_audit:r reseller_categories:rad reseller_ledger:r reseller_order_items:r reseller_orders:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_stores:r reseller_telegram:',
+    'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_stores:r reseller_telegram:',
     '11د منح authenticated كما في التصميم');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
     'reseller_create_order reseller_store reseller_store_products', '11هـ دوال anon');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('authenticated', p.oid, 'execute')),
-    'reseller_adjust reseller_balance reseller_can_edit reseller_cancel_payout reseller_catalog reseller_create_order reseller_decide_store reseller_logo_count reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
+    'reseller_adjust reseller_balance reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_create_order reseller_decide_store reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
     '11و دوال authenticated');
   perform pg_temp.want(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'reseller%' and p.prosecdef and not coalesce(p.proconfig::text ~ 'search_path', false)), '11ز كل دالة definer لها search_path');
 
@@ -702,7 +702,8 @@ begin
   perform pg_temp.out();
 
   -- ج) الصفوف التي يراها كل طرف ولا تخصّه
-  for t in select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r' order by 1 loop
+  for t in select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'
+            and c.relname not in ('reseller_identities', 'reseller_logins') order by 1 loop   -- هذان بلا متجر: يغطيهما 14
     foreach s in array array['A', 'B', 'N', 'mona', 'sup', 'admin'] loop
       execute format('select count(*) from public.%I x where %s', t.relname, case t.relname when 'reseller_stores' then format('owner_id is distinct from %L', pg_temp.f(s))
         when 'reseller_order_items' then format('not exists (select 1 from public.reseller_orders o where o.order_id = x.order_id and o.store_id = %L)', pg_temp.f(s || '.store'))
@@ -871,4 +872,114 @@ begin
       split_part(w, '|', 2)::int, '13أ التقرير اليومي صافٍ: ' || split_part(w, '|', 1));
   end loop;
   perform pg_temp.want(b ~ 'منتج P — 2 قطعة \(14,000 د.ع\)', '13ب والأكثر مبيعاً بالأساس');
+end $$;
+
+-- ---------- 14) الدخول عبر تيليغرام والبدء السريع ----------
+do $$
+declare r jsonb; n text; h text := repeat('a', 64); h2 text := repeat('b', 64); opts int[]; num int; u uuid; u2 uuid; u3 uuid;
+        t bigint := 5550001; sid uuid; s1 text; s2 text; ok boolean := false; i int;
+begin
+  perform pg_temp.out();
+  u := pg_temp.mk_user('T1'); u2 := pg_temp.mk_user('T2'); u3 := pg_temp.mk_user('T3');
+  perform pg_temp.as_('service_role');
+
+  -- أول دخول: يمرّ بالرقم ثم بجهة الاتصال
+  r := public.reseller_login_new(h); n := r->>'nonce'; num := (r->>'number')::int;
+  perform pg_temp.want(num between 10 and 99 and length(n) = 16, '14أ رمز ورقم');
+  perform pg_temp.eq(public.reseller_login_poll(n, h)->>'status', 'waiting', '14ب الانتظار');
+  perform pg_temp.eq(public.reseller_login_poll(n, h2)->>'status', 'expired', '14ج سرّ خاطئ = منتهية');
+  opts := public.reseller_login_claim(n, t, 'علي');
+  perform pg_temp.want(array_length(opts, 1) = 3 and num = any(opts) and (select count(distinct x) from unnest(opts) x) = 3, '14د ثلاثة أرقام مختلفة فيها الصحيح');
+  perform pg_temp.want(public.reseller_login_claim(n, t + 1, 'غريب') is null, '14هـ الثاني لا يحجز المحاولة');
+  perform pg_temp.eq(public.reseller_login_pick(n, t + 1, num), 'expired', '14و غير الحاجز لا يؤكد');
+  perform pg_temp.eq(public.reseller_login_pick(n, t, num), 'need_phone', '14ز الصحيح يطلب جهة الاتصال أول مرة');
+  perform pg_temp.eq(public.reseller_login_phone(t, t + 9, '07701234567'), 'not_yours', '14ح جهة اتصال غيرك مرفوضة');
+  perform pg_temp.eq(public.reseller_login_phone(t, t, '+442071234567'), 'bad_phone', '14ط رقم غير عراقي');
+  perform pg_temp.eq(public.reseller_login_phone(t, t, '+9647701234567'), 'ok', '14ي جهة الاتصال تُقبل');
+  r := public.reseller_login_poll(n, h);
+  perform pg_temp.want(r->>'status' = 'ok' and r->>'phone' = '9647701234567' and (r->>'user_id') is null and (r->>'telegram_id')::bigint = t, '14ك الصفحة تستلم الهوية');
+  perform pg_temp.eq(public.reseller_login_poll(n, h)->>'status', 'expired', '14ل مرة واحدة فقط');
+  perform pg_temp.eq(public.reseller_identity_save(t, u, 'علي', '9647701234567'), u, '14م تثبيت الهوية');
+
+  -- دخول ثانٍ: بلا جهة اتصال، ويعيد المستخدم نفسه
+  r := public.reseller_login_new(h); n := r->>'nonce'; num := (r->>'number')::int;
+  perform public.reseller_login_claim(n, t, 'علي');
+  perform pg_temp.eq(public.reseller_login_pick(n, t, num), 'confirmed', '14ن العائد لا يُسأل عن هاتفه');
+  perform pg_temp.eq((public.reseller_login_poll(n, h)->>'user_id')::uuid, u, '14س وتعود الجلسة لنفس المستخدم');
+
+  -- رقم خاطئ يُلغي المحاولة ولو أعاد الصحيح
+  r := public.reseller_login_new(h); n := r->>'nonce'; num := (r->>'number')::int;
+  perform public.reseller_login_claim(n, t, 'علي');
+  perform pg_temp.eq(public.reseller_login_pick(n, t, case when num = 10 then 11 else 10 end), 'wrong', '14ع رقم خاطئ');
+  perform pg_temp.eq(public.reseller_login_pick(n, t, num), 'expired', '14ف ولا رجعة بعده');
+  perform pg_temp.eq(public.reseller_login_poll(n, h)->>'status', 'failed', '14ص والصفحة تعلم');
+
+  -- انتهاء الصلاحية
+  r := public.reseller_login_new(h); n := r->>'nonce';
+  perform pg_temp.out();
+  update public.reseller_logins set expires_at = now() - interval '1 second' where nonce = n;
+  perform pg_temp.as_('service_role');
+  perform pg_temp.want(public.reseller_login_claim(n, t, 'علي') is null, '14ق رمز منتهٍ لا يُحجز');
+
+  -- حدّ المحاولات
+  begin
+    for i in 1..120 loop perform public.reseller_login_new(h); end loop;
+  exception when others then ok := sqlerrm like '%محاولات كثيرة%';
+  end;
+  perform pg_temp.want(ok, '14ر حدّ المحاولات في الدقيقة');
+  perform pg_temp.fails('select public.reseller_login_new(''xyz'')', 'طلب غير صالح', '14ش سرّ غير مجزَّأ');
+  perform pg_temp.out();
+
+  -- البدء السريع
+  perform pg_temp.as_('authenticated', pg_temp.f('A'));
+  perform pg_temp.want(public.reseller_me() is null, '14ت من بلا هوية تيليغرام لا ملف له');
+  perform pg_temp.fails('select public.reseller_quick_start(''متجر'')', 'سجّل الدخول عبر تيليغرام', '14ث بلا هوية لا بدء');
+  perform pg_temp.out();
+  perform pg_temp.as_('service_role');
+  perform public.reseller_identity_save(t + 7, u2, 'بلا هاتف', null);
+  perform public.reseller_identity_save(t + 8, u3, 'سارة', '9647711111111');
+  perform pg_temp.out();
+  perform pg_temp.as_('authenticated', u2);
+  perform pg_temp.fails('select public.reseller_quick_start(''متجر بلا هاتف'')', 'شارك رقمك', '14خ بلا هاتف موثَّق لا بدء');
+  perform pg_temp.as_('authenticated', u);
+  perform pg_temp.fails('select public.reseller_quick_start(''م'')', 'اسم المتجر', '14ذ الاسم قصير');
+  perform pg_temp.runs('select public.reseller_quick_start(''متجر النور الجديد'')', '14ض البدء بالاسم وحده');
+  perform pg_temp.out();
+  select id, slug into sid, s1 from public.reseller_stores where owner_id = u;
+  perform pg_temp.want(s1 ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and public.reseller_slug_ok(s1), '14غ رابط لاتيني صالح: ' || s1);
+  perform pg_temp.want((select status = 'draft' and phone = '9647701234567' and markup_type = 'percent' and markup_value = 20 and round_to = 250 and theme_color ~ '^#[0-9a-f]{6}$'
+                          from public.reseller_stores where id = sid), '14ظ الافتراضات: مسودة، هاتف موثَّق، زيادة، لون');
+  perform pg_temp.want((select count(*) from public.reseller_categories where store_id = sid) = (select count(*) from public.categories c where c.store = 'rifai'
+                          and exists (select 1 from public.products p where p.category_id = c.id and p.is_active and p.store = 'rifai'))
+                        and exists (select 1 from public.reseller_categories where store_id = sid), '14أأ كل الأصناف مختارة');
+  perform pg_temp.eq((select chat_id from public.reseller_telegram where store_id = sid), t, '14أب الدخول يربط إشعارات تيليغرام');
+  perform pg_temp.as_('authenticated', u);
+  perform pg_temp.eq((select public.reseller_quick_start('اسم آخر')), sid, '14أج مرة ثانية: المتجر نفسه (لا نسخة)');
+  perform pg_temp.eq(public.reseller_me()->'store'->>'status', 'draft', '14أد من أنا: حالة المتجر');
+  perform pg_temp.eq(public.reseller_me()->>'phone', '07701234567', '14أهـ الهاتف يُعرض محلياً بلا 964');
+  perform pg_temp.out();
+  perform pg_temp.as_('authenticated', u3);
+  perform pg_temp.runs('select public.reseller_quick_start(''متجر النور الجديد'')', '14أو نفس الاسم من آخر');
+  perform pg_temp.out();
+  select slug into s2 from public.reseller_stores where owner_id = u3;
+  perform pg_temp.want(s2 <> s1 and public.reseller_slug_ok(s2), '14أز تكرار الاسم يُحلّ برابط مختلف: ' || s2);
+  perform pg_temp.eq(public.reseller_slugify('متجر النور'), 'mtjr-alnwr', '14أح تحويل الاسم العربي');
+  perform pg_temp.want(public.reseller_slug_ok(public.reseller_free_slug('Rifai Shop')) and public.reseller_free_slug('Rifai Shop') !~ 'rifa', '14أط اسم ينتحل الرفاعي لا يصير رابطاً');
+
+  -- الإرسال بعد البدء السريع، والتسرّب
+  perform pg_temp.as_('authenticated', u);
+  perform pg_temp.runs('select public.reseller_submit_store()', '14أي الإرسال للموافقة بعد البدء');
+  perform pg_temp.eq((select count(*) from public.reseller_category_list() where selected), (select count(*) from public.reseller_categories where store_id = sid), '14أف قائمة الأصناف المختارة');
+  perform pg_temp.want((select count(*) from public.reseller_category_list()) >= (select count(*) from public.reseller_category_list() where selected) and not exists (select 1 from public.reseller_category_list() l join public.categories c on c.id = l.id where c.store <> 'rifai'), '14أق وقائمة الأصناف بلا أصناف غيره');
+  perform pg_temp.fails('select * from public.reseller_identities', 'permission denied', '14أك الهويات محجوبة عن المتصفح');
+  perform pg_temp.fails('select * from public.reseller_logins', 'permission denied', '14أل ومحاولات الدخول');
+  perform pg_temp.fails('select public.reseller_login_new(repeat(''a'', 64))', 'permission denied', '14أم دوال الدخول ليست للمتصفح');
+  perform pg_temp.as_('anon');
+  perform pg_temp.fails('select public.reseller_quick_start(''متجر'')', 'permission denied', '14أن ولا بدء لزائر');
+  perform pg_temp.fails('select * from public.reseller_category_list()', 'permission denied', '14أه ولا قائمة أصناف لزائر');
+  perform pg_temp.fails('select public.reseller_login_poll(''x'', repeat(''a'', 64))', 'permission denied', '14أس ولا استعلام دخول');
+  foreach n in array array['select * from public.reseller_identities', 'insert into public.reseller_identities default values', 'delete from public.reseller_logins', 'select * from public.reseller_logins'] loop
+    perform pg_temp.fails(n, 'permission denied', '14أع anon مرفوض: ' || n);
+  end loop;
+  perform pg_temp.out();
 end $$;

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { start, stop, psql, session as open, must, errOf, read, migration } from './local-db.mjs'
 import { MUTATIONS, RACE_MUTATIONS } from './reseller-mutations.mjs'
 
-const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports']
+const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports', '021_reseller_login']
 const test = read('supabase/reseller-test.sql')
 const one = (sql) => must('query', psql(sql))
 const ok = (cond, label) => { if (!cond) throw new Error('فشل: ' + label); console.log('✔ ' + label); passed++ }

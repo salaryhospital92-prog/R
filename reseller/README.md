@@ -1,7 +1,10 @@
-# متجر الزبون — تطبيق المروّجين المستقل
+# تطبيق المروّجين المستقل — متجر الزبون ولوحة المروّج
 
 تطبيق Vite + React + Tailwind 4 منفصل تماماً عن واجهة الرفاعي (`src/`). لا يستورد منها شيئاً، ولا يحمل اسماً ولا شعاراً ولا نطاقاً ولا رقماً لها: هوية الصفحة كلها من `reseller_store` (الاسم، الشعار، اللون، النبذة، واتساب).
 الاعتماديات: `react`, `react-dom`, `lucide-react`, `@supabase/supabase-js` فقط.
+
+## اللوحة (`/panel/`)
+مدخل ثانٍ بحزمة منفصلة (في الإنتاج على `app.<النطاق>` لا يشارك جلسته مع المتاجر). الدخول بتيليغرام عبر دالة الحافة `supabase/functions/reseller-login` (راجع `docs/reseller-design.md` §13–14). `VITE_SUPPORT_WHATSAPP` يُظهر زر المساعدة.
 
 ## البيانات
 ثلاث دوال فقط (مسودات 018): `reseller_store(slug)` (تتضمن مناطق زاد)، `reseller_store_products(slug)`، `reseller_create_order(...)`. الأسعار والكميات تأتي محسوبة من الخادم؛ الواجهة تعرضها فقط (`src/lib/qty.js` يطابق قواعد `src/lib/price.js`: العلبة وأقل كمية).
@@ -10,11 +13,13 @@
 
 ## التجربة المحلية (بلا الحيّ)
 ```powershell
-node reseller/dev/stack.mjs up      # Postgres معزول (شبكة داخلية) + المسودات 015–020 + بيانات وهمية + PostgREST على 127.0.0.1:3101
+node reseller/dev/stack.mjs up      # Postgres معزول (شبكة داخلية) + المسودات 015–021 + بيانات وهمية + PostgREST على 127.0.0.1:3101
 npm --prefix reseller run dev       # http://localhost:5180/s/noor-store  (أو noor-store.localhost:5180)
 node reseller/dev/stack.mjs sql "…" # تغيير حالة القاعدة (سعر، مخزون، reseller_orders_enabled…)
 node reseller/dev/stack.mjs down
 ```
+في التجربة يلعب `/dev/telegram/*` دور تيليغرام (Start، ضغط رقم، جهة اتصال) بالمعالج الحقيقي نفسه؛ مالك `noor-store` يدخل برقم تيليغرام 111 ويرى طلبات وأرباحاً، وأي رقم آخر يبدأ من المعالج.
+
 متاجر التجربة: `noor-store` (شعار)، `sunny-corner` (لون فاتح)، `paused-shop` (موقوف)، `review-shop` (قيد المراجعة).
 
 ## للإنتاج (المرحلة 5، لم يُنفَّذ)

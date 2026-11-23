@@ -17,7 +17,7 @@ const { seedSql, writeAssets } = await import('./seed.mjs')
 
 const API = 'reseller-dev-api', NET = 'reseller-dev-net', PORT = 3101
 const docker = (...a) => spawnSync('docker', a, { encoding: 'utf8' })
-const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports']
+const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports', '021_reseller_login']
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
 
 const down = () => { docker('rm', '-f', API); docker('rm', '-f', 'reseller-dev-db'); docker('network', 'rm', NET) }
@@ -43,5 +43,7 @@ else if (cmd === 'up') {
   must('connect api', docker('network', 'connect', NET, API))
   must('start api', docker('start', API))
   writeFileSync(fileURLToPath(new URL('../.env.development.local', import.meta.url)), `VITE_ANON_KEY=${anon}\n`)
-  console.log(`جاهز: http://127.0.0.1:${PORT} (PostgREST) — ثم: npm run dev داخل reseller/ وافتح /s/noor-store`)
+  // مفتاح الخدمة التجريبي وسرّ JWT لمحاكي الدخول في vite.config.js (ملف محلي غير متتبَّع)
+  writeFileSync(fileURLToPath(new URL('./.secrets.json', import.meta.url)), JSON.stringify({ secret, service: sign({ role: 'service_role', iss: 'reseller-dev', exp: 4102444800 }) }))
+  console.log(`جاهز: http://127.0.0.1:${PORT} (PostgREST) — ثم: npm --prefix reseller run dev ← المتجر /s/noor-store ، اللوحة /panel/`)
 } else console.log('الاستعمال: up | down | sql "…"')

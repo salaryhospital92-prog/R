@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, Check, Info, Minus, Package, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
-import { logoUrl } from './lib/api'
+import { logoUrl } from './lib/config'
 import { back, go, href } from './lib/route'
 
 export const Logo = ({ store, size = 44 }) => {
