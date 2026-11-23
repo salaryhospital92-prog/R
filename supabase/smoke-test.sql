@@ -24,8 +24,8 @@ begin
          (v_entry, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
           'entry@test.local', '', now(), now(), now());
 
-  update public.profiles set role = 'admin'      where id = v_admin;
-  update public.profiles set role = 'data_entry' where id = v_entry;
+  update public.profiles set role = 'admin'     , is_active = true where id = v_admin;
+  update public.profiles set role = 'data_entry', is_active = true where id = v_entry;
 
   -- 1) إضافة منتج تُنشئ صف أسعار تلقائياً
   insert into public.products (barcode, name, category_id)

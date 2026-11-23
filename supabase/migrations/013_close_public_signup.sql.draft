@@ -1,0 +1,77 @@
+-- =====================================================================
+-- 013 — إغلاق ثغرة التسجيل العام  (مسودة — لم تُطبَّق)
+-- =====================================================================
+-- الامتداد ‎.draft مقصود: scripts/db.mjs يأخذ ‎*.sql فقط، و«npm run ship»
+-- يطبّق كل ملف جديد تلقائياً. بعد موافقة المالك يُعاد التسمية إلى ‎.sql.
+--
+-- قبلها: أي مسجّل جديد يأخذ profile فعّالاً بدور data_entry = موظف رفاعي.
+-- بعدها: المسجّل الجديد ملفه موقوف (is_active=false) فكل دوال الصلاحية
+--        (is_admin / is_staff / is_supervisor / is_mona_admin) تعيد false.
+--
+-- لماذا يبقى الصف ولا يُلغى؟ stock_movements.created_by وdebts.created_by
+-- يأخذان auth.uid() ويشيران إلى profiles — فمن سجّل ولا صفّ له يفشل طلبه.
+--
+-- الملفات القائمة لا تُمسّ: تغيير الافتراضي لا يعيد كتابة الصفوف.
+-- لا حذف لزناد ولا لكائن على auth.users؛ إضافة زناد واحد فقط.
+-- =====================================================================
+
+-- قفل auth.users قصير؛ إن كانت مشغولة يفشل الملف كله ويُعاد بدل أن يوقف الدخول
+set local lock_timeout = '5s';
+
+-- ---------------------------------------------------------------------
+-- 1) الافتراضي بلا صلاحية — في العمود وفي الدالة معاً
+-- ---------------------------------------------------------------------
+alter table public.profiles alter column is_active set default false;
+
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, full_name, is_active)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', ''), false)
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 2) الدور المعلّق لا يُمنح إلا لبريد مؤكَّد، ولحساب أُنشئ بعد إضافة الدور
+--    - كان يُمنح لحظة التسجيل قبل التأكيد: من يعرف البريد يسبق صاحبه.
+--    - حساب سُجّل بالبريد قبل إضافة الدور قد تكون كلمة سرّه لغير صاحبه،
+--      فلا يُرقّى تلقائياً؛ يرقّيه المدير بسطر SQL بعد التحقق.
+--    - «Add user» مع Auto Confirm في لوحة Supabase يؤكّد البريد فيعمل كما كان.
+--    الشرط يعتمد على mailer_autoconfirm=false (هو الواقع 2026-11-23). لو
+--    فُعّل التأكيد التلقائي يوماً صار «مؤكَّد» لا يعني ملكية البريد: لا
+--    تُضَف عندها صفوف في pending_roles.
+-- ---------------------------------------------------------------------
+alter table public.pending_roles
+  add column if not exists created_at timestamptz not null default now();
+
+create or replace function public.apply_pending_role() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare pr public.pending_roles;
+begin
+  if new.email is null or new.email_confirmed_at is null then
+    return new;
+  end if;
+
+  -- الحذف هو القفل: صف واحد يُستهلك مرة واحدة. الدقيقة لفرق ساعة الخادمين.
+  delete from public.pending_roles p
+   where lower(p.email) = lower(new.email)
+     and coalesce(new.created_at, now()) >= p.created_at - interval '1 minute'
+  returning * into pr;
+
+  if found then
+    insert into public.profiles (id, full_name, role, is_active)
+    values (new.id, pr.full_name, pr.role, true)
+    on conflict (id) do update set role = excluded.role, is_active = true,
+      full_name = coalesce(nullif(public.profiles.full_name, ''), excluded.full_name);
+  end if;
+  return new;
+end $$;
+
+-- زناد الإدراج القائم (on_auth_user_pending_role) يبقى: يخدم من أُنشئ مؤكَّداً.
+-- وهذا يخدم من أُكّد لاحقاً (وخدمة Auth تُدرج أولاً ثم تؤكّد بتحديث).
+create or replace trigger on_auth_user_pending_role_confirmed
+  after update of email_confirmed_at on auth.users
+  for each row
+  when (old.email_confirmed_at is null and new.email_confirmed_at is not null)
+  execute function public.apply_pending_role();

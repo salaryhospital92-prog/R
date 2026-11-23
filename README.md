@@ -66,7 +66,7 @@ Supabase يسجّل الدخول بالبريد الإلكتروني لا باس
    - فعّل **Auto Confirm User** (وإلا لن يستطيع الدخول قبل تأكيد البريد)
 2. **SQL Editor** ونفّذ هذا السطر كما هو — لا تحتاج نسخ أي رقم:
    ```sql
-   update public.profiles p set role = 'admin'
+   update public.profiles p set role = 'admin', is_active = true
      from auth.users u
     where u.id = p.id and u.email = 'admin@alrifaie.com';
    ```
@@ -75,7 +75,8 @@ Supabase يسجّل الدخول بالبريد الإلكتروني لا باس
    select u.email, p.role from public.profiles p join auth.users u on u.id = p.id;
    ```
 
-أي حساب يُنشأ لاحقاً يبدأ تلقائياً بدور `data_entry` — لا يحتاج منك شيئاً.
+بعد ترحيل 013 أي حساب جديد يبدأ **موقوفاً** (التسجيل عام للمروّجين). لتفعيل موظف إدخال:
+نفس السطر أعلاه بـ `role = 'data_entry', is_active = true`.
 
 ### التشغيل
 ```bash
