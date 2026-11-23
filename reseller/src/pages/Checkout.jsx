@@ -26,6 +26,7 @@ export default function Checkout() {
   const [errs, setErrs] = useState({})
   const [fail, setFail] = useState(null)        // {text, diff}
   const [busy, setBusy] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)   // الملاحظة اختيارية: حقل أقل على الشاشة
   const lock = useRef(false)
   const zone = store.zones.find((z) => z.id === f.zone)
   const total = subtotal + (zone?.fee ?? 0)
@@ -96,7 +97,7 @@ export default function Checkout() {
           <input id="f-name" className={field} value={f.name} onChange={(e) => set({ name: e.target.value })} autoComplete="name" maxLength={120}
             aria-invalid={!!errs.name} aria-describedby={errs.name ? 'f-name-err' : undefined} />
         </Field>
-        <Field id="f-phone" label="رقم الموبايل" error={errs.phone} hint="سنتصل بك على هذا الرقم لتأكيد الطلب">
+        <Field id="f-phone" label="رقم الموبايل" error={errs.phone} hint="للتواصل بخصوص الطلب">
           <input id="f-phone" className={`${field} text-right`} dir="ltr" type="tel" inputMode="tel" autoComplete="tel" placeholder="07701234567"
             value={f.phone} onChange={(e) => set({ phone: e.target.value })} aria-invalid={!!errs.phone} aria-describedby={errs.phone ? 'f-phone-err' : undefined} />
         </Field>
@@ -117,9 +118,13 @@ export default function Checkout() {
           )}
           {errs.zone && <p className="mt-1.5 text-sm font-medium text-red-600">{errs.zone}</p>}
         </fieldset>
-        <Field id="f-note" label="ملاحظة (اختياري)" hint="عنوان أدق أو أي تفصيل يساعد التوصيل">
-          <textarea id="f-note" className={`${field} min-h-24 py-3`} rows={3} maxLength={500} value={f.note} onChange={(e) => set({ note: e.target.value })} />
-        </Field>
+        {noteOpen || f.note ? (
+          <Field id="f-note" label="ملاحظة" hint="عنوان أدق أو أي تفصيل يساعد التوصيل">
+            <textarea id="f-note" className={`${field} min-h-24 py-3`} rows={3} maxLength={500} value={f.note} onChange={(e) => set({ note: e.target.value })} autoFocus={noteOpen && !f.note} />
+          </Field>
+        ) : (
+          <button type="button" onClick={() => setNoteOpen(true)} className="min-h-12 text-[15px] font-bold text-brand-deep underline underline-offset-4">إضافة ملاحظة للتوصيل</button>
+        )}
       </form>
 
       <section className="mt-8" aria-label="ملخص الطلب">
