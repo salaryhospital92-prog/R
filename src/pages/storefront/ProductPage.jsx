@@ -6,8 +6,8 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatIQD, formatNumber } from '../../lib/format'
-import { useCart, stepFor } from '../../context/CartContext'
-import { priceOf, lineTotal } from '../../lib/price'
+import { useCart } from '../../context/CartContext'
+import { priceOf, lineTotal, stepFor, minFor, maxFor, packOf, priceNote, qtyText, hasTier, piecesText } from '../../lib/price'
 import { STORE, contactWhatsappUrl, asset } from '../../lib/store'
 import ContactCard from '../../components/ContactCard'
 import SideMenu from '../../components/SideMenu'
@@ -30,7 +30,7 @@ export default function ProductPage() {
       .then(({ data }) => {
         setProduct(data)
         setLoading(false)
-        if (data) setQty(stepFor(cart.mode ?? 'retail', data.sold_by))
+        if (data) setQty(minFor(cart.mode ?? 'retail', data))
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
@@ -49,17 +49,18 @@ export default function ProductPage() {
     )
   }
 
-  const step = stepFor(mode, product.sold_by)
-  const byDozen = step === 12
-  const price = priceOf(product, mode)
+  const step = stepFor(mode, product)
+  const min = minFor(mode, product)
+  const pack = packOf(product, mode)
+  const maxQty = maxFor(mode, product)
+  const soldOut = maxQty <= 0
+  const safeQty = Math.min(Math.max(qty, min), Math.max(maxQty, min))
+  const price = priceOf(product, mode, safeQty)
   const onRequest = price === 0
-  const soldOut = product.quantity_single <= 0
-  const maxQty = Math.floor(product.quantity_single / step) * step
-  const safeQty = Math.min(Math.max(qty, step), Math.max(maxQty, step))
 
   const switchMode = (m) => {
     setMode(m)
-    setQty(stepFor(m, product.sold_by))
+    setQty(minFor(m, product))
   }
 
   // الطلب المباشر: سلة من هذا المنتج وحده ثم إلى إتمام الطلب
@@ -153,7 +154,8 @@ export default function ProductPage() {
                 <>
                   <p className="price-xl text-brand-800">{formatIQD(price)}</p>
                   <p className="mt-1 text-xs leading-relaxed text-ink-600">
-                    {byDozen ? 'سعر الدرزن (12 قطعة)' : 'للقطعة'}
+                    {priceNote(product, mode) || 'للقطعة'}
+                    {mode === 'retail' && hasTier(product) && ` · من ${piecesText(product.wholesale_min)}: ${formatIQD(product.price_wholesale)} للقطعة`}
                   </p>
                 </>
               )}
@@ -167,12 +169,12 @@ export default function ProductPage() {
 
             {!soldOut && (
               <div className="mt-3 flex items-center justify-between rounded-2xl bg-ink-100 p-1">
-                <button onClick={() => setQty(Math.max(safeQty - step, step))}
+                <button onClick={() => setQty(Math.max(safeQty - step, min))}
                         className="flex size-11 items-center justify-center rounded-xl bg-white shadow-sm active:scale-90" aria-label="إنقاص">
                   <Minus className="size-5" />
                 </button>
                 <span className="font-extrabold">
-                  {byDozen ? `${formatNumber(safeQty / 12)} درزن` : `${formatNumber(safeQty)} قطعة`}
+                  {qtyText(safeQty, pack)}
                   {!onRequest && <span className="block text-xs font-normal text-ink-600">{formatIQD(lineTotal(product, mode, safeQty))}</span>}
                 </span>
                 <button onClick={() => setQty(Math.min(safeQty + step, maxQty))} disabled={safeQty >= maxQty}

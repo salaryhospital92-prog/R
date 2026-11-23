@@ -5,13 +5,6 @@ const STORAGE_KEY = 'alrifaie-cart'
 
 export const useCart = () => useContext(CartContext)
 
-/**
- * خطوة الكمية: الدرزن (12) في وضع الجملة للبضاعة التي تُباع بالدرزن،
- * والقطعة (1) في المفرد أو للبضاعة التي لا تُباع إلا بالقطعة.
- */
-export const stepFor = (mode, soldBy = 'dozen') =>
-  (mode === 'wholesale' && soldBy !== 'piece' ? 12 : 1)
-
 const load = () => {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY))

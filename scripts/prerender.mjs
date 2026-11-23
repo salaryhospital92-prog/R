@@ -35,7 +35,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const db = createClient(url, key, { auth: { persistSession: false } })
 const { data: products, error } = await db
   .from('storefront_products')
-  .select('code, name, category, image_url, price_retail, price_wholesale, price_dozen, sold_by, in_stock')
+  .select('code, name, category, image_url, price_retail, price_wholesale, price_dozen, sold_by, pack_qty, pack_only, in_stock')
 
 if (error) {
   console.log('تعذّر جلب المنتجات:', error.message, '— تخطّي التوليد')
@@ -53,14 +53,15 @@ const setMeta = (html, attr, name, value) =>
 
 let count = 0
 for (const p of products ?? []) {
-  const priceText = p.price_retail > 0 ? iqd(p.price_retail) : 'السعر عند الطلب'
+  const packText = p.price_dozen > 0 ? `${iqd(p.price_dozen)} ${p.pack_qty === 12 ? 'للدرزن' : `للعلبة (${p.pack_qty} قطعة)`}` : null
+  const priceText = p.pack_only ? packText ?? 'السعر عند الطلب' : p.price_retail > 0 ? iqd(p.price_retail) : 'السعر عند الطلب'
   const title = `${p.name} — أسواق الرفاعي`
   const desc = [
     p.category,
     priceText,
     p.sold_by === 'piece'
       ? (p.price_wholesale > 0 ? `الجملة ${iqd(p.price_wholesale)} للقطعة` : null)
-      : (p.price_dozen > 0 ? `الجملة ${iqd(p.price_dozen)} للدرزن` : null),
+      : (packText && !p.pack_only ? `الجملة ${packText}` : null),
     p.in_stock ? 'متوفر الآن' : 'غير متوفر حالياً',
     'توصيل لكل المحافظات — اطلب عبر واتساب.',
   ].filter(Boolean).join(' · ')

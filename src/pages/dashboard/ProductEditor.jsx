@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { formatNumber, totalUnits } from '../../lib/format'
+import { packName } from '../../lib/price'
 import { uploadProductImage, deleteProductImage, fetchImageFromUrl } from '../../lib/image'
 import { readImageText } from '../../lib/ocr'
 import { googleImages, googleLens } from '../../lib/search'
@@ -34,6 +35,9 @@ export default function ProductEditor() {
     price_unit: 'dozen',
     is_featured: false,
     description: '',
+    pack_qty: 12,
+    wholesale_min: 1,
+    pack_only: false,
   })
   const [prices, setPrices] = useState({ price_retail: '', price_wholesale: '' })
   const [dozens, setDozens] = useState('')
@@ -54,7 +58,9 @@ export default function ProductEditor() {
   // وحدة إدخال سعر الجملة — مستقلّة عن وحدة البيع عمداً:
   // الأولى «كيف تكتب السعر»، والثانية «كيف يشتري الزبون».
   const priceByDozen = form.price_unit !== 'piece'
-  const dozenPrice = Math.round(Number(prices.price_wholesale) || 0) * (priceByDozen ? 1 : 12)
+  const packQty = Math.max(1, Math.round(Number(form.pack_qty) || 12))
+  const pack = packName(packQty)
+  const dozenPrice = Math.round(Number(prices.price_wholesale) || 0) * (priceByDozen ? 1 : packQty)
   const retailPrice = Number(prices.price_retail) || 0
 
   /** تبديل الوحدة يغيّر معنى الرقم ولا يغيّر الرقم المكتوب */
@@ -68,8 +74,8 @@ export default function ProductEditor() {
   useEffect(() => {
     if (isNew) return
     const select = isAdmin
-      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, product_prices(price_retail, price_dozen)'
-      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description'
+      ? 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, pack_qty, wholesale_min, pack_only, product_prices(price_retail, price_dozen)'
+      : 'id, barcode, name, category_id, image_url, quantity_single, sold_by, price_unit, is_featured, description, pack_qty, wholesale_min, pack_only'
 
     supabase.from('products').select(select).eq('id', id).maybeSingle().then(({ data, error }) => {
       if (error || !data) {
@@ -85,13 +91,16 @@ export default function ProductEditor() {
           price_unit: data.price_unit ?? 'dozen',
           is_featured: data.is_featured ?? false,
           description: data.description ?? '',
+          pack_qty: data.pack_qty ?? 12,
+          wholesale_min: data.wholesale_min ?? 1,
+          pack_only: data.pack_only ?? false,
         })
         if (data.product_prices) {
           setPrices({
             price_retail: String(data.product_prices.price_retail ?? 0),
-            // كما أُدخل: ثمن الدرزن، أو القطعة (مخزَّنة × 12) إن كانت وحدة الإدخال قطعة
+            // كما أُدخل: ثمن العلبة، أو القطعة (مخزَّنة × قطع العلبة) إن كانت وحدة الإدخال قطعة
             price_wholesale: String((data.product_prices.price_dozen ?? 0)
-              / ((data.price_unit ?? 'dozen') === 'piece' ? 12 : 1)),
+              / ((data.price_unit ?? 'dozen') === 'piece' ? data.pack_qty ?? 12 : 1)),
           })
         }
       }
@@ -164,6 +173,9 @@ export default function ProductEditor() {
         price_unit: form.price_unit,
         is_featured: form.is_featured,
         description: form.description.trim() || null,
+        pack_qty: packQty,
+        wholesale_min: Math.max(1, Math.round(Number(form.wholesale_min) || 1)),
+        pack_only: form.pack_only && form.sold_by !== 'piece',
       }
 
       let productId = id
@@ -278,8 +290,8 @@ export default function ProductEditor() {
           <span className={label}>وحدة البيع</span>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { v: 'dozen', t: 'بالدرزن والقطعة', s: 'الجملة تُحسب بالدرزن' },
-              { v: 'piece', t: 'بالقطعة فقط', s: 'لا يُباع بالدرزن' },
+              { v: 'dozen', t: 'بالعلبة والقطعة', s: 'الجملة بالدرزن أو العلبة' },
+              { v: 'piece', t: 'بالقطعة فقط', s: 'الجملة من كمية تحددها' },
             ].map((o) => (
               <button
                 key={o.v} type="button" onClick={() => setForm({ ...form, sold_by: o.v })}
@@ -292,6 +304,30 @@ export default function ProductEditor() {
               </button>
             ))}
           </div>
+          {form.sold_by === 'piece' ? (
+            <label className="mt-2 flex items-center gap-2 text-sm font-semibold">
+              أقل كمية لسعر الجملة
+              <input type="number" min="1" max="1000" inputMode="numeric" value={form.wholesale_min}
+                     onChange={(e) => setForm({ ...form, wholesale_min: e.target.value })}
+                     className={field + ' max-w-24 text-center'} />
+              قطعة
+            </label>
+          ) : (
+            <>
+              <label className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                عدد القطع في علبة الجملة
+                <input type="number" min="1" max="1000" inputMode="numeric" value={form.pack_qty}
+                       onChange={(e) => setForm({ ...form, pack_qty: e.target.value })}
+                       className={field + ' max-w-24 text-center'} />
+                قطعة
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={form.pack_only}
+                       onChange={(e) => setForm({ ...form, pack_only: e.target.checked })} className="size-5 accent-emerald-700" />
+                لا يُباع بالمفرد — العلبة كاملة فقط
+              </label>
+            </>
+          )}
         </div>
 
         <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-brand-50 p-3 ring-1 ring-brand-700/15">
@@ -414,7 +450,7 @@ export default function ProductEditor() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={label} htmlFor="dozens">درزن</label>
+            <label className={label} htmlFor="dozens">درزن (12 قطعة)</label>
             <input id="dozens" type="number" min="0" inputMode="numeric" value={dozens} onChange={(e) => setDozens(e.target.value)} placeholder="0" className={field} />
           </div>
           <div>
@@ -438,7 +474,7 @@ export default function ProductEditor() {
           </div>
           <div>
             <label className={label} htmlFor="wholesale">
-              سعر الجملة — {priceByDozen ? 'سعر الدرزن' : 'سعر القطعة'}
+              سعر الجملة — {priceByDozen ? `سعر ال${pack}` : 'سعر القطعة'}
             </label>
             <input id="wholesale" type="number" min="0" inputMode="numeric" value={prices.price_wholesale} onChange={(e) => setPrices({ ...prices, price_wholesale: e.target.value })} placeholder="0" className={field} />
           </div>
@@ -447,7 +483,7 @@ export default function ProductEditor() {
             <span className="mb-1 block text-[11px] font-bold text-ink-600">الرقم أعلاه هو:</span>
             <div role="group" aria-label="وحدة سعر الجملة" className="flex gap-1 rounded-xl bg-ink-100 p-1">
               {[
-                { v: 'dozen', t: 'سعر الدرزن', s: '12 قطعة' },
+                { v: 'dozen', t: `سعر ال${pack}`, s: `${formatNumber(packQty)} قطعة` },
                 { v: 'piece', t: 'سعر القطعة', s: 'قطعة واحدة' },
               ].map((u) => (
                 <button
@@ -466,13 +502,13 @@ export default function ProductEditor() {
 
           {Number(prices.price_wholesale) > 0 && (
             <p className="col-span-2 rounded-lg bg-brand-50 px-3 py-2 text-center text-xs font-bold text-brand-900">
-              المفرد {formatNumber(retailPrice)} د.ع للقطعة · الجملة {formatNumber(dozenPrice)} د.ع للدرزن
+              المفرد {formatNumber(retailPrice)} د.ع للقطعة · الجملة {formatNumber(dozenPrice)} د.ع لل{pack} ({formatNumber(packQty)} قطعة)
             </p>
           )}
-          {dozenPrice > 0 && retailPrice > 0 && (dozenPrice >= retailPrice * 12 || dozenPrice <= retailPrice * 6) && (
+          {dozenPrice > 0 && retailPrice > 0 && (dozenPrice > retailPrice * packQty || dozenPrice * 2 <= retailPrice * packQty) && (
             <p className="col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-warn-600">
-              ⚠️ ثمن الدرزن ({formatNumber(dozenPrice)}) لا يتناسب مع 12 قطعة بالمفرد
-              ({formatNumber(retailPrice * 12)}) — تأكد من الوحدة المختارة.
+              ⚠️ ثمن ال{pack} ({formatNumber(dozenPrice)}) لا يتناسب مع {formatNumber(packQty)} قطعة بالمفرد
+              ({formatNumber(retailPrice * packQty)}) — تأكد من الوحدة المختارة.
             </p>
           )}
           <p className="col-span-2 text-xs text-ink-600">اتركه 0 ليظهر في المتجر بـ«السعر عند الطلب».</p>

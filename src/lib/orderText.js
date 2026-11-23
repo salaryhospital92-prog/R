@@ -1,4 +1,5 @@
 import { formatIQD, formatNumber } from './format'
+import { itemQtyText, packName } from './price'
 
 /** أصل الموقع — منه تُبنى روابط صفحات المنتجات داخل النص */
 const STORE_URL = typeof window === 'undefined' ? 'https://alrifai.shop' : window.location.origin
@@ -23,13 +24,11 @@ export function buildOrderMessage(order) {
   ]
 
   order.items.forEach((it, i) => {
-    const qty = order.mode === 'wholesale' && it.qty % 12 === 0
-      ? `${formatNumber(it.qty / 12)} درزن (${formatNumber(it.qty)} قطعة)`
-      : `${formatNumber(it.qty)} قطعة`
+    const qty = itemQtyText(it, order.mode) + (it.pack_qty ? ` (${formatNumber(it.qty)} قطعة)` : '')
     lines.push(
       it.price_on_request
         ? `${i + 1}. ${it.name} — ${qty} — السعر عند الطلب`
-        : `${i + 1}. ${it.name} — ${qty} × ${formatIQD(it.dozen_price ?? it.unit_price)}${it.dozen_price != null ? ' للدرزن' : ''} = ${formatIQD(it.line_total)}`,
+        : `${i + 1}. ${it.name} — ${qty} × ${formatIQD(it.dozen_price ?? it.unit_price)}${it.pack_qty ? ` لل${packName(it.pack_qty)}` : ''} = ${formatIQD(it.line_total)}`,
     )
     // سطر التمييز: أسماء كثيرة متطابقة، والرمز والباركود يفصلان بينها.
     // الطلبات القديمة لا تحمل الرمز — يُتخطّى السطر عندها بلا كسر.

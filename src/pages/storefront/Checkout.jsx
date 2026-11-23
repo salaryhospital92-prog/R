@@ -4,9 +4,9 @@ import {
   ArrowRight, Trash2, Loader2, CheckCircle2, Truck, ImageOff, Plus, Minus, Copy, Check,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { priceOf, lineTotal } from '../../lib/price'
+import { priceOf, lineTotal, stepFor, minFor, maxFor, packOf, packName, qtyText } from '../../lib/price'
 import { formatIQD, formatNumber } from '../../lib/format'
-import { useCart, stepFor } from '../../context/CartContext'
+import { useCart } from '../../context/CartContext'
 import { buildOrderMessage } from '../../lib/orderText'
 import ContactCard from '../../components/ContactCard'
 import { orderWindow } from '../../lib/store'
@@ -163,10 +163,11 @@ export default function Checkout() {
       <main className="grid gap-2 p-3">
         {products.map((p) => {
           const qty = cart.items[p.id] ?? 0
-          const price = priceOf(p, cart.mode)
-          const step = stepFor(cart.mode, p.sold_by)
-          const byDozen = step === 12
-          const maxQty = Math.floor(p.quantity_single / step) * step
+          const price = priceOf(p, cart.mode, qty)
+          const step = stepFor(cart.mode, p)
+          const min = minFor(cart.mode, p)
+          const pack = packOf(p, cart.mode)
+          const maxQty = maxFor(cart.mode, p)
           return (
             <div key={p.id} className="animate-fade-up card p-3">
               <div className="flex items-center gap-3">
@@ -178,7 +179,7 @@ export default function Checkout() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{p.name}</p>
                   <p className="text-xs text-ink-600">
-                    {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} ${byDozen ? 'للدرزن' : 'للقطعة'}`}
+                    {price === 0 ? 'السعر عند الطلب' : `${formatIQD(price)} ${pack ? `لل${packName(pack)}` : 'للقطعة'}`}
                   </p>
                   <p className="text-sm font-extrabold text-brand-700">
                     {price === 0 ? '—' : formatIQD(lineTotal(p, cart.mode, qty))}
@@ -192,15 +193,13 @@ export default function Checkout() {
               {/* تعديل الكمية من داخل السلة مباشرة */}
               <div className="mt-2.5 flex items-center gap-2">
                 <div className="flex flex-1 items-center justify-between rounded-2xl bg-brand-50 p-1 ring-1 ring-brand-600/15">
-                  <button type="button" onClick={() => cart.setQty(p.id, Math.max(qty - step, 0))}
+                  <button type="button" onClick={() => cart.setQty(p.id, qty - step < min ? 0 : qty - step)}
                           className="flex size-9 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm transition active:scale-90"
                           aria-label="إنقاص">
                     <Minus className="size-4" />
                   </button>
                   <span className="text-[13px] font-extrabold text-brand-900">
-                    {byDozen
-                      ? `${formatNumber(qty / 12)} درزن — ${formatNumber(qty)} قطعة`
-                      : `${formatNumber(qty)} قطعة`}
+                    {qtyText(qty, pack)}{pack > 0 && ` — ${formatNumber(qty)} قطعة`}
                   </span>
                   <button type="button" onClick={() => cart.setQty(p.id, Math.min(qty + step, maxQty))}
                           disabled={qty >= maxQty}
@@ -210,14 +209,14 @@ export default function Checkout() {
                   </button>
                 </div>
                 <input
-                  type="number" min={step} step={step} max={maxQty} inputMode="numeric"
-                  value={byDozen ? qty / 12 : qty}
+                  type="number" min={min / step} max={maxQty / step} inputMode="numeric"
+                  value={qty / step}
                   onChange={(e) => {
                     const n = Math.max(0, Math.min(Number(e.target.value) || 0, maxQty / step))
-                    cart.setQty(p.id, n * step)
+                    cart.setQty(p.id, n > 0 ? Math.max(Math.floor(n) * step, min) : 0)
                   }}
                   className="w-20 rounded-2xl border border-ink-200 bg-white px-2 py-2.5 text-center text-sm font-bold focus:border-brand-500 focus:outline-none"
-                  aria-label={byDozen ? 'عدد الدرزن' : 'عدد القطع'}
+                  aria-label={pack ? `عدد ال${packName(pack)}` : 'عدد القطع'}
                 />
               </div>
               {qty >= maxQty && (
