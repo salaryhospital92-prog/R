@@ -281,6 +281,9 @@ try {
   if (process.argv.includes('-v')) console.log((t.stderr.match(/✔ .*/g) ?? []).join('\n'))
   passed += n
   console.log(`✔ فحوص القاعدة: ${n}`)
+  // 021 يرفض التطبيق بلا 015: دخول المروّجين ينشئ مستخدمين فيصيرون موظفين لولاه
+  const no015 = run(apply({ '015_close_public_signup': '' }))
+  ok(no015.status !== 0 && /021 يتطلب 015/.test(no015.stderr), '021 يرفض التطبيق بلا 015')
 
   // ج) كسر الحرّاس واحداً واحداً
   if (!only && !process.argv.includes('--races')) {

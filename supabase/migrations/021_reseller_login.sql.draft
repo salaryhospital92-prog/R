@@ -8,6 +8,15 @@
 -- =====================================================================
 set local lock_timeout = '5s';
 
+-- حارس: دالة الحافة تنشئ مستخدمين في auth.users، وبلا 015 يصير كل مروّج موظف رفاعي (profile فعّال بدور data_entry:
+-- كل الطلبات وهواتف الزبائن وتعديل المنتجات). لذلك لا يُطبَّق هذا الملف قبل 015 أبداً.
+do $$ begin
+  if (select column_default from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'is_active') is distinct from 'false'
+     or pg_get_functiondef('public.handle_new_user'::regproc) !~ 'values \(new\.id,[^;]*, false\)' then
+    raise exception '021 يتطلب 015 (إغلاق ثغرة التسجيل) أولاً — وإلا صار كل مروّج موظفاً';
+  end if;
+end $$;
+
 insert into public.app_settings (key, value) values
   ('reseller_default_markup_percent', '20')      -- الزيادة المقترحة في المعالج؛ قرار المالك (افتراض معمول به)
 on conflict (key) do nothing;

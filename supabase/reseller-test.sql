@@ -969,6 +969,7 @@ begin
   -- الإرسال بعد البدء السريع، والتسرّب
   perform pg_temp.as_('authenticated', u);
   perform pg_temp.runs('select public.reseller_submit_store()', '14أي الإرسال للموافقة بعد البدء');
+  perform pg_temp.want(not public.is_staff() and not public.is_supervisor() and not public.is_admin(), '14أص مستخدم تيليغرام الجديد ليس موظفاً ولا مشرفاً ولا مديراً');
   perform pg_temp.eq((select count(*) from public.reseller_category_list() where selected), (select count(*) from public.reseller_categories where store_id = sid), '14أف قائمة الأصناف المختارة');
   perform pg_temp.want((select count(*) from public.reseller_category_list()) >= (select count(*) from public.reseller_category_list() where selected) and not exists (select 1 from public.reseller_category_list() l join public.categories c on c.id = l.id where c.store <> 'rifai'), '14أق وقائمة الأصناف بلا أصناف غيره');
   perform pg_temp.fails('select * from public.reseller_identities', 'permission denied', '14أك الهويات محجوبة عن المتصفح');

@@ -59,16 +59,17 @@ export default function Login() {
 
       {s.phase === 'waiting' ? (
         <div className="mt-6 text-center">
+          <p className="text-[15px] font-bold text-stone-700">تذكّر هذا الرقم</p>
+          <p className="mx-auto mt-2 grid size-24 place-items-center rounded-3xl bg-stone-100 text-5xl font-extrabold tabular-nums" aria-label={`الرقم ${s.number}`}>{s.number}</p>
           <a href={s.bot} target="_blank" rel="noopener noreferrer"
-            className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#229ed9] px-5 text-lg font-bold text-white active:scale-[.98]">
+            className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#229ed9] px-5 text-lg font-bold text-white active:scale-[.98]">
             <Send className="size-5" aria-hidden="true" />الدخول عبر تيليغرام
           </a>
-          <ol className="mt-6 space-y-2 text-start text-[15px] leading-7 text-stone-700">
-            <li>١. اضغط الزر وافتح تيليغرام، ثم اضغط «Start».</li>
-            <li>٢. سيظهر لك ثلاثة أرقام: اضغط الرقم الظاهر هنا:</li>
+          <ol className="mt-5 space-y-1 text-start text-[15px] leading-7 text-stone-700">
+            <li>١. افتح تيليغرام واضغط «Start».</li>
+            <li>٢. سيظهر ثلاثة أرقام: اضغط الرقم الذي تذكّرته ({s.number}).</li>
           </ol>
-          <p className="mx-auto mt-3 grid size-24 place-items-center rounded-3xl bg-stone-100 text-5xl font-extrabold tabular-nums" aria-label={`الرقم ${s.number}`}>{s.number}</p>
-          <p className="mt-4 text-sm text-stone-500">بعد الضغط ستدخل هذه الصفحة وحدها.</p>
+          <p className="mt-3 text-sm text-stone-500">بعدها تدخل هذه الصفحة وحدها.</p>
         </div>
       ) : (
         <button type="button" disabled={s.phase === 'starting'} onClick={() => begin()}
