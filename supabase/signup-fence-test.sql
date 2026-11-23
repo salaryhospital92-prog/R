@@ -1,5 +1,5 @@
 -- =====================================================================
--- فحص 013 — يُشغَّل محلياً فقط عبر: node scripts/check-signup-fence.mjs
+-- فحص 015 — يُشغَّل محلياً فقط عبر: node scripts/check-signup-fence.mjs
 -- لا تشغّله على القاعدة الحيّة: يُدرج في auth.users ويُنشئ طلباً.
 -- =====================================================================
 \set ON_ERROR_STOP on
@@ -42,7 +42,7 @@ end $$;
 do $$
 declare u uuid; a uuid; v_prod uuid; v_zone int; n int; r text;
 begin
-  -- 1) الثغرة نفسها (هذا الفحص يفشل على القاعدة قبل 013)
+  -- 1) الثغرة نفسها (هذا الفحص يفشل على القاعدة قبل 015)
   u := pg_temp.signup('stranger@example.test');
   perform pg_temp.want(pg_temp.rights(u) = '', '1أ المسجّل الجديد بلا أي صلاحية');
   perform pg_temp.confirm(u);
@@ -107,7 +107,7 @@ begin
   perform pg_temp.want(pg_temp.rights(u) like 'admin,%', '9ب السطر الجديد (role + is_active) يعمل');
   a := u;
 
-  -- 10) الحسابات القائمة قبل 013 (زرعها المشغّل) لم تتغيّر
+  -- 10) الحسابات القائمة قبل 015 (زرعها المشغّل) لم تتغيّر
   select count(*) into n from public.profiles p join auth.users x on x.id = p.id
    where x.email like 'old-%@example.test' and p.is_active and 'old-' || p.role || '@example.test' = x.email;
   perform pg_temp.want(n = 3, '10 الحسابات القائمة (admin/data_entry/mona_admin) على حالها');

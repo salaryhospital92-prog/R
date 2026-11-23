@@ -1,7 +1,8 @@
-# متاجر المروّجين — تصميم المرحلة 0
+# متاجر المروّجين — التصميم (بعد المرحلة 1)
 
 الأرقام مقروءة من القاعدة الحيّة (قراءة فقط) يوم 2026-11-23. لا شيء هنا مطبَّق.
-ترقيم: `012` عرض الجملة (مطبَّق) · `013` إغلاق التسجيل (مسودة) · `014+` المنصة.
+المصدر النهائي للجداول والتواقيع هو المسودات `016`–`020` نفسها. الفحص: `node scripts/check-reseller.mjs`.
+ترقيم: `012` عرض الجملة (مطبَّق) · `013`–`014` السعر كما أُدخل والعلبة (مطبَّقان) · `015` إغلاق التسجيل (مسودة) · `016`–`020` المنصة (مسودات).
 
 ## 1) قرارات التصميم المختصرة
 
@@ -15,29 +16,19 @@
 | الرصيد مشتق من القيود فقط، وكل دالة مالية تقفل صف المتجر أولاً | منع الحجز والدفع المزدوجين |
 | قيود `(order_id, kind, cycle)` بدل `(order_id, kind)` | «مُسلَّم» في البوت ضغطة بلا تأكيد؛ نحتاج تسليم ← تراجع ← تسليم صحيحاً دون تكرار |
 | حساب الاستلام: صفوف لا تُعدَّل، التغيير صف جديد | طلب الدفع يشير إلى الحساب الذي حُجز له؛ والتاريخ هو سجل التغيير |
-| المروّج خارج `profiles.role` كلياً | 013 يبقي له صفاً **موقوفاً** في profiles (مطلوب لمفاتيح `created_by`) |
+| المروّج خارج `profiles.role` كلياً | 015 يبقي له صفاً **موقوفاً** في profiles (مطلوب لمفاتيح `created_by`) |
 
-## 2) الجداول
+## 2) الملفات (مسودات، `.sql.draft`)
 
-كلها: `enable row level security`، ثم `revoke all … from anon, authenticated`، ثم منح صريح فقط. (زناد `ensure_rls` الحيّ يفعّل RLS لكنه لا يسحب المنح.) المبالغ bigint.
+| الملف | ما فيه |
+|---|---|
+| 016_rifai_line | حساب بند الطلب في دالة واحدة `rifai_line` يستعملها `create_order` والمروّج. يتوقف إن تغيّرت `create_order` عن 014 |
+| 017_reseller_schema | 11 جدولاً، RLS، منح صريح، الإعدادات، حاوية الشعارات، `orders.reseller_store_id`، `products.reseller_hidden` |
+| 018_reseller_orders | التسعير، واجهة الزبون، الطلب، إدارة المتجر |
+| 019_reseller_money | الربح والمهلة وطلبات الاستلام وقرارات المدير، وفحص دوري كل ربع ساعة |
+| 020_reseller_reports | التقارير الثلاثة صافية + عنوان إشعار الطلب |
 
-**reseller_stores** — `id uuid pk`, `owner_id uuid unique not null → auth.users on delete restrict`, `slug text unique check (slug ~ '^[a-z0-9](-?[a-z0-9]){2,29}$')` + زناد قائمة محجوزة، `name text check(2..40)`, `logo_path`, `theme_color check (~ '^#[0-9a-f]{6}$')`, `phone`, `whatsapp`, `about check(<=500)`, `status check in (draft,pending,active,suspended,rejected) default draft`, `status_reason`, `decided_at`, `decided_by text`, `markup_type check in (fixed,percent)`, `markup_value bigint check(>=0)`, `round_to int check in (1,250,500,1000) default 250`, `created_at`.
-*إضافة على المواصفة:* `draft` (قبل الإرسال) و`rejected` (قابل للتعديل وإعادة الإرسال).
-
-**reseller_categories** — pk `(store_id, category_id)`.
-**reseller_products** — pk `(store_id, product_id)`, `is_visible bool default true`, `price_override bigint check(>0)`, `display_name check(<=120)`, `display_description check(<=1000)`.
-
-**reseller_orders** — `order_id uuid pk → orders on delete restrict`, `store_id`, `base_subtotal`, `reseller_subtotal`, `profit generated always as (reseller_subtotal - base_subtotal) stored check(>=0)`, `promo_on bool` (حال العرض وقت الطلب), `base_mode text`, `cycle int default 0`, `cancel_requested_at`, `cancel_reason`.
-**reseller_order_items** — pk `(order_id, line_no)`, `product_id`, `qty check(>0)`, `base_unit`, `sell_unit check(>=base_unit)`, `display_name`.
-**reseller_ledger** — `id`, `store_id`, `kind check in (profit_due,reversal,payout,adjustment)`, `amount bigint check(<>0)` موقّع، `order_id`, `cycle`, `payout_id`, `note`, `created_by text`, `created_at`. فريد جزئي `(order_id,kind,cycle) where order_id is not null` و`(payout_id) where kind='payout'`. زناد يرفض update/delete حتى لـservice_role.
-**reseller_payout_accounts** — `id`, `store_id`, `method check in (zaincash,qicard)`, `account_no`, `holder_name`, `is_current`, `created_at`. فريد جزئي `(store_id,method) where is_current`. زين كاش `^07\d{9}$`؛ كي كارد أرقام فقط بطول محدود. لا أعمدة PIN/CVV/انتهاء/OTP. زناد يمنع تعديل `account_no`.
-**reseller_payouts** — `id`, `store_id`, `account_id`, `amount check(>0)`, `origin check in (auto,manual)`, `status check in (open,paid,cancelled,rejected)`, `reference`, `decided_by`, `decided_at`, `reason`, `created_at`. فريد جزئي `(store_id) where status='open'`؛ `check (status<>'paid' or nullif(trim(reference),'') is not null)`.
-**reseller_product_requests** — `store_id`, `name`, `image_path`, `url check(https)`, `expected_qty`, `note`, `status check in (new,reviewing,available,rejected)`, `reply`, `product_id`; حد 20 مفتوحاً لكل متجر.
-**reseller_telegram** — `store_id pk`, `chat_id unique`, `code unique`, `code_expires_at` (15 دقيقة), `linked_at`.
-
-تعديل قائم (إضافي): `orders.reseller_store_id`، `orders_source_check` يضاف إليه `reseller`، `products.reseller_excluded bool default false` (الصور المكتوب عليها اسم الرفاعي).
-Bucket `reseller-logos`: عام للقراءة، 1MB، png/jpeg/webp، المسار `<auth.uid()>/…` للكتابة.
-إعدادات `app_settings`: `reseller_base`، `reseller_max_markup_percent` (فارغ = بلا سقف)، `reseller_payout_threshold`=25000، `reseller_domain`، `reseller_orders_enabled` (قاطع طوارئ، off ابتداءً).
+**الإعدادات في كتلة واحدة أول 017:** `reseller_orders_enabled`=off، `reseller_base`=retail، `reseller_max_markup_percent`=فارغ، `reseller_hold_days`=3، `reseller_payout_threshold`=25000، `reseller_show_customer_phone`=off، `reseller_url`=فارغ. قيمة تالفة تعود للافتراضي (مهلة تالفة = 3 لا 0).
 
 ## 3) مصفوفة الصلاحيات
 
@@ -53,51 +44,23 @@ Bucket `reseller-logos`: عام للقراءة، 1MB، png/jpeg/webp، المس�
 | reseller_payouts | — | ق صفوفه؛ طلب/إلغاء د | — | ق؛ دفع/رفض د | — | د |
 | reseller_product_requests | — | ق؛ إضافة | ق | ق ك | — | ق |
 | reseller_telegram | — | د | — | — | — | ق ك |
+| reseller_audit | — | — | — | ق | — | ق |
 | orders (source=reseller) | — | د (`reseller_my_orders`) | ق، تأكيد جديد (سياسة قائمة `<> 'mona'`) | ق ك (قائمة) | — | كل |
 | products / product_prices | — | د (`reseller_catalog`) | قائم | قائم | قائم | كل |
 | إعدادات reseller_* | — | — | — | ق ك | — (مفاتيحه `mona_` فقط) | كل |
 
 `service_role` يتجاوز RLS دائماً؛ لذلك الدوال المالية تتحقق أيضاً من هوية المدير (القسم 6).
 
-## 4) التواقيع
+## 4) السعر والطلب
 
-كل دالة `security definer set search_path = public` **مع** `revoke execute … from public, anon, authenticated` ثم منح صريح — لأن الافتراضي الحيّ يمنح anon تنفيذ كل دالة جديدة.
+كل دالة `security definer set search_path` مع سحب التنفيذ من public/anon/authenticated ثم منح صريح (الافتراضي الحيّ يمنح anon كل دالة جديدة).
 
-```
--- التسعير: موضع واحد للعرض والطلب
-reseller_suspect(w bigint, r bigint) → bool        -- w>0 and r>0 and (w>r or r>=3*w)
-reseller_base_price(w, r) → bigint                 -- null إن مشبوهاً أو صفراً، وإلا
-                                                   -- rifai_price(w, r, <reseller_base>, <promo_wholesale_all='on'>)
-reseller_price(base, override, type, value, round_to, cap_pct) → bigint
-   -- override ثم markup؛ تقريب لأعلى؛ لا أقل من base؛ لا أعلى من السقف؛ base null ⇒ null ⇒ لا يظهر
-
--- anon
-reseller_store(slug) → jsonb                       -- الفعّال فقط
-reseller_store_products(slug) → table(id, name, category, image_path, price, in_stock)
-reseller_create_order(slug, name, phone, items jsonb, zone_id, note, expected_total bigint) → jsonb
-
--- المالك
-reseller_save_store(jsonb), reseller_submit_store(), reseller_catalog(),
-reseller_my_orders(limit, before), reseller_request_cancel(order_id, reason),
-reseller_balance() → {pending, due, reserved, available, paid}, reseller_statement(limit, before),
-reseller_save_payout_account(method, account_no, holder), reseller_request_payout(), reseller_cancel_payout(id),
-reseller_telegram_code()
-
--- المدير (ويب: is_admin() — بوت: service_role + p_telegram_id مدير فعّال في telegram_agents)
-reseller_decide_store(store_id, action, reason, p_telegram_id default null)
-reseller_payout_paid(payout_id, reference, p_telegram_id default null)
-reseller_payout_reject(payout_id, reason, p_telegram_id default null)
-reseller_payout_reveal(payout_id) → الحساب كاملاً  -- ويب فقط، ويُسجَّل
-reseller_adjust(store_id, amount, note)
-```
-
-**الطلب:** المتصفح يرسل `{product_id, qty}` فقط. `expected_total` ليس سعراً معتمداً: إن خالف المحسوب يُرفض «تغيّر السعر، راجع السلة» (مهم لحظة إطفاء العرض). القفل: البنود مرتبة بـ`product_id` ثم `for update` (منع تشابك طلبين). الزناد القائم `apply_stock_movement` يقفل ويرفض السالب أصلاً، فالسباق محمي في العمق. `stock_movements.created_by = null` صراحة حتى لا تتوقف على ملف الزائر. الحد: 5 طلبات/ساعة للهاتف، 30/ساعة للمتجر. `delivery_fee` من المنطقة. الرد بلا code/barcode/أساس.
-
-**الأساس والعرض المؤقت (قرار المالك المبلَّغ):** الأساس = السعر الفعلي نفسه عبر `rifai_price` القائمة. النتائج:
-- إطفاء `promo_wholesale_all` **يغيّر أساس المروّج فوراً**؛ لقطات الطلبات السابقة لا تتحرك (مخزَّنة بالبند مع `promo_on`/`base_mode`).
-- سعر ثابت صار أقل من الأساس الجديد يُرفع إلى الأساس (ربح 0) ويُنبَّه المروّج؛ لا بيع تحت الأساس.
-- العرض شغّال: 0 منتج بلا أساس. مُطفأ: 43 تختفي لو `reseller_base='wholesale'`، و3 لو `'retail'`؛ وفي وضع retail يرتفع الأساس في 153 منتجاً.
-- المشبوه مستبعد حتى يُصحَّح: 7 اليوم (3 جملتها أعلى + 4 مفردها ≥ 3 أضعاف). **تنبيه:** `rifai_price` الحيّة تستعمل عتبة **ضعفين**؛ منتج واحد بين الضعفين والثلاثة يدخل متاجر المروّجين خارج العرض. المقترح توحيدها على ضعفين (8 مستبعدة)، وعندها لا يفرق وضع الأساس لأي منتج أثناء العرض.
+- **الأساس** = ما يحاسِب به متجر الرفاعي نفس البند في وضع `reseller_base` (افتراضه المفرد): كمية الجملة والعلبة وpack_only والعرض، من `rifai_line` نفسها. مثبت: `create_order` القديمة = الجديدة على كل منتج × كمية × وضع، وأساس المروّج = مبلغ الرفاعي.
+- وحدة البيع قطعة، أو علبة لما يُباع علباً. **سعر البيع ثابت للوحدة**: من اشترى كمية جملة يدفع سعر الوحدة × العدد، وفرق الجملة ربح المروّج. ولا ينزل بند تحت أساسه.
+- يُستبعد: أساس وحدته 0، و`reseller_hidden`، والموقوف، ومنتجات المنى، وصنف لم يختره المتجر. (أُلغي استبعاد «المشبوه»: صُحِّحت الأسعار.)
+- تغيّر أسعار الرفاعي أو العرض يغيّر أساس المروّج فوراً؛ لقطات الطلبات لا تتحرك.
+- **الطلب:** المتصفح يرسل `{product_id, qty}`؛ `expected_total` لا يحدد سعراً بل يرفض إن خالف. المنتج المكرر يُجمع. مناطق زاد فقط («استلام من المحل» يكشف الرفاعي). هاتف موبايل عراقي. 5 طلبات/ساعة للهاتف و30 للمتجر. قفل المنتجات بترتيب ثابت.
+- **ترتيب الأقفال:** الطلب ← المتجر (`for no key update`) ← المنتجات. `for update` على المتجر كان يتشابك مع إدراج طلب (مفتاح خارجي)؛ مثبت باختبار.
 
 ## 5) آلات الحالة
 
@@ -105,9 +68,9 @@ reseller_adjust(store_id, amount, note)
 
 **الطلب والربح:**
 ```
-new / confirmed      → الربح «معلّق» (محسوب من reseller_orders، بلا قيد)
-→ delivered          → cycle+1، قيد profit_due(+profit)         ثم فحص العتبة
-delivered → أي حالة  → قيد reversal(−profit) لنفس cycle (مرة واحدة: فريد)
+new / confirmed      → «معلّق» pending (بلا قيد)
+→ delivered          → cycle+1، قيد profit_due متاح بعد المهلة available_at = الآن + reseller_hold_days
+delivered → أي حالة  → قيد reversal لنفس cycle وبنفس available_at (فما في المهلة يُصفَّر ولا يمسّ المتاح)
 cancelled            → المخزون يعيده الزناد القائم؛ لا ربح
 زاد failed/cancelled → الطلب يبقى confirmed؛ لا ربح
 ```
@@ -115,13 +78,14 @@ cancelled            → المخزون يعيده الزناد القائم؛ �
 
 **طلب الاستلام:**
 ```
-available = Σ ledger − Σ payouts(open)
+held      = Σ ledger حيث available_at > now()
+available = Σ ledger حيث available_at <= now() − Σ payouts(open)
             ┌ cancelled (المروّج) ┐
-open ───────┼ rejected (المدير)   ┼→ الحجز يزول تلقائياً، ثم يُعاد فحص العتبة
+open ───────┼ rejected (المدير)   ┼→ الحجز يزول تلقائياً
             └ paid (مرجع إلزامي)  ┘→ قيد payout(−amount)
 ```
 - يدوي: كل `available` ما دام > 0 وله حساب استلام ومتجره فعّال.
-- تلقائي: بعد `profit_due` أو حفظ حساب أو إغلاق طلب: `available ≥ reseller_payout_threshold` ولا مفتوح ⇒ `insert … on conflict do nothing`. بلا حساب استلام: لا يُنشأ، وتظهر له دعوة لإدخال الحساب، ويُنشأ عند حفظه.
+- تلقائي: عند التسليم، وكل ربع ساعة (المهلة تنتهي بلا حدث)، وعند حفظ حساب جديد أو تسوية أو دفع. الملغى أو المرفوض لا يعود وحده بنفس المبلغ، إلا إن زاد المتاح أو غيّر المروّج حسابه. الشرط: `available ≥ reseller_payout_threshold` ولا مفتوح ⇒ `insert … on conflict do nothing`. بلا حساب استلام: لا يُنشأ، وتظهر له دعوة لإدخال الحساب، ويُنشأ عند حفظه.
 - مفتوح واحد: الفهرس الجزئي. ما يستحق أثناءه ينتظر التالي.
 - `paid` يتحقق تحت القفل أن `Σ ledger ≥ amount`، وإلا «تغيّر المستحق بعد إلغاء طلب — ارفض الطلب وأعد حسابه».
 - عكس بعد الدفع يجعل الرصيد سالباً يُخصم من اللاحق؛ لا مطالبة آلية.
@@ -129,7 +93,7 @@ open ───────┼ rejected (المدير)   ┼→ الحجز يزو
 
 ## 6) البوت
 
-`callback_data` (UUID = 36 بايت): `rsok:` `rsno:` (متجر) و`rpgo:` `rpok:` `rpno:` (دفع) = **41 بايت** لكل زر، والحد 64. لا سبب ولا مبلغ ولا حساب داخل الزر.
+`callback_data` (UUID = 36 بايت): `rsok:` `rsno:` (متجر) و`rpok:` `rpno:` (دفع) = **41 بايت** لكل زر، والحد 64. لا سبب ولا مبلغ ولا حساب داخل الزر.
 
 1. إرسال متجر ← زناد ← `net.http_post` لكل مدير (داخل `exception when others`): الاسم، الرابط، رابط الشعار (معاينة)، زرّا ✅/✖️. ✖️ يطلب السبب نصاً.
 2. المعالج: `agent.role==='admin'` **و** الدالة تعيد التحقق من `p_telegram_id` في `telegram_agents`. مطلوب فعلاً: `ADMIN_ONLY` يفحص المفتاح النصي فقط ولا يغطي أزرار UUID، وعميل MTProto معدَّل يرسل أي `callback_data`.
@@ -140,11 +104,10 @@ open ───────┼ rejected (المدير)   ┼→ الحجز يزو
 
 ## 7) المحاسبة
 
-تُبنى على التعريفات الحيّة. `left join reseller_orders ro` والاستبدال `subtotal → subtotal - coalesce(ro.profit,0)` ومثلها `total_amount`. طلبات غير المروّج لا تتغير بدينار.
+التقارير الثلاثة تقرأ `rifai_orders_net()` بدل `orders`: نفس الصفوف، وطلب المروّج فيها بالأساس. مثبت بالمطابقة الحرفية قبل/بعد لطلبات الرفاعي والمنى، وبفروق محسوبة عند وجود طلب مروّج.
 
-- **finance_summary:** goods/total/cash/debt صافية + مفاتيح جديدة `reseller_gross`, `reseller_profit`, `reseller_payable`. هي security invoker: المشرف لا يرى `reseller_orders` فيرى إجمالياً؛ الشاشة للمدير أصلاً، ويُمنع النداء لغير المدير/الخادم.
-- **top_products:** إيراد بنود المروّج من `reseller_order_items.base_unit`.
-- **send_daily_sales_report:** الخمسة المجاميع + الأمس + الأكثر مبيعاً.
+- security invoker: المشرف لا يرى `reseller_orders` فلو نادى `finance_summary` يرى إجمالي طلب المروّج لا صافيه (الشاشة للمدير).
+- **بقي للمرحلة 4:** `src/pages/dashboard/Reports.jsx` يجمع `orders` في المتصفح مباشرة (تقرير رابع لم تذكره المواصفة) فيُظهر سعر المروّج؛ ومفاتيح `reseller_payable` للمدير.
 - مثال القبول: أساس 7000، بيع 10000، توصيل 2000 ⇒ subtotal 10000، total 12000، زاد 10000 (مؤكَّد من `zad_dispatch`: ‏`total_amount - delivery_fee`)، ربح 3000، صافي الرفاعي 7000.
 - الدفعات **لا تُسجَّل** في `expenses`: الربح خُصم من المبيعات، فتسجيلها خصم مزدوج.
 
@@ -155,7 +118,7 @@ open ───────┼ rejected (المدير)   ┼→ الحجز يزو
 | النطاق، og، manifest/PWA، `<title>`، `alrifaie-cart`، نص واتساب | كلها في تطبيق الرفاعي | تطبيق `reseller/` مستقل بلا استيراد من `src/lib/store.js`, `orderText.js` |
 | روابط الصور `…supabase.co/product-images/<uuid>.jpg` (246/246) | نفس رابط alrifai.shop — بحث عكسي يكشف | وكيل `/i/<id>` على نطاق المروّج |
 | مرجع مشروع Supabase ومفتاح anon في الشبكة | بهما يقرأ أي زائر `storefront_products` **بما فيه سعر الجملة** | وكيل `/api/*`؛ والكشف نفسه قائم اليوم (تنبيه، لم أغيّره) |
-| الشعار/النص داخل الصور | **لم يُتحقق** (يحتاج OCR/نظر) | `products.reseller_excluded` |
+| الشعار/النص داخل الصور | **لم يُتحقق** (يحتاج OCR/نظر) | `products.reseller_hidden` |
 | `description` | وصف واحد فقط من 246، وبلا ذكر الرفاعي | لا يُعرض |
 | أسماء المنتجات | 0 يحوي «رفاع/rifai» | — |
 | code/barcode | تبحث في جوجل فتصل للرفاعي | لا تُرجع للزبون |
@@ -171,25 +134,30 @@ open ───────┼ rejected (المدير)   ┼→ الحجز يزو
 
 ## 10) الإطلاق والتراجع
 
-1. **013 أولاً وحده** (بعد موافقة المالك): تحقّق قبله أن `profiles` ما زالت 3 فعّالة (2 admin، 1 mona_admin)؛ غريبٌ فعّال ⇒ أوقفه. إعادة التسمية إلى `.sql` ثم `npm run db` (لا `ship`). ثم أعد عدّ الثلاثة ودخول مدير واحد. بديل فوري بلا ترحيل: إطفاء «Allow new users to sign up» من لوحة Supabase.
-   تراجع 013: دالتا 001/schema القديمتان — **لا** يُعاد الافتراضي إلى true.
-2. مع 013 في الواجهة: `AuthContext` يقرأ `is_active` ويعامل الموقوف كمن لا ملف له (اليوم يرى هيكل لوحة فارغاً؛ RLS يحمي البيانات).
-3. `014` جداول وقواعد، `015` الدوال والزنادات، `016` المحاسبة (وحدها، مع ملف تراجع فيه `pg_get_functiondef` السابق). كلها معاملات؛ لا enum جديد.
+1. **015 أولاً وحده** (بعد موافقة المالك): تحقّق قبله أن `profiles` ما زالت 3 فعّالة (2 admin، 1 mona_admin)؛ غريبٌ فعّال ⇒ أوقفه. إعادة التسمية إلى `.sql` ثم `npm run db` (لا `ship`). ثم أعد عدّ الثلاثة ودخول مدير واحد. بديل فوري بلا ترحيل: إطفاء «Allow new users to sign up» من لوحة Supabase.
+   تراجع 015: دالتا 001/schema القديمتان — **لا** يُعاد الافتراضي إلى true.
+2. مع 015 في الواجهة: `AuthContext` يقرأ `is_active` ويعامل الموقوف كمن لا ملف له (اليوم يرى هيكل لوحة فارغاً؛ RLS يحمي البيانات).
+3. `016`–`020` بالترتيب، كل ملف في معاملة، بلا enum جديد. تُحفظ قبلها `pg_get_functiondef` لـ`create_order`، `finance_summary`، `top_products`، `send_daily_sales_report`، `notify_new_order` (هي وحدها المعدَّلة من القائم).
 4. القاطع `reseller_orders_enabled=off` حتى تجربة متجر المالك؛ ثم 3 متاجر؛ ثم فتح.
 5. التراجع: القاطع off + تعليق المتاجر. الجداول المالية **لا تُحذف**؛ `orders_source_check` لا يُضيَّق ما دام فيه طلب reseller.
 6. خطر تشغيلي: `npm run ship` يطبّق كل `.sql` جديد ويرفع main وينشر البوت — لا تُدمج ملفات `.sql` قبل موافقتها. وإعادة تشغيل `operations.sql` تعيد دوالّ قديمة فوق سياج 011 وما بعده (محلياً لا يُنفَّذ أصلاً قبل 010: يستدعي `is_mona_admin`).
 
-## 11) ما لم يُجب عنه المالك بعد
+## 11) للمالك: افتراضات معمول بها، تُؤكَّد أو تُغيَّر
 
-1. **إغلاق ثغرة التسجيل (013) على القاعدة الحيّة**: موافق؟ (أو إطفاء التسجيل من اللوحة الآن.)
-2. بعد انتهاء العرض: أساس المروّج الجملة أم المفرد؟ ومعه: 236 من 246 تُباع عندك بالدرزن، والمروّج يبيع **قطعة واحدة** بأساس الجملة — مقبول؟ (فرق المفرد عن الجملة 20% وسطياً في 158 منتجاً.)
-3. الزبون يرفض الاستلام: من يتحمل أجرة زاد؟ (الافتراض: لا ربح ولا غرامة.)
-4. سقف السعر الأعلى؟ (الافتراض: بلا سقف.)
-5. من يتصل بالزبون، وهل يرى المروّج هاتفه؟ (الافتراض: الرفاعي يتصل، والهاتف مخفي عن المروّج.)
-6. هل يُعرض كل مخزون الرفاعي للمروّجين أم أصناف منه؟
-7. الربح مستحق فور «مُسلَّم»، أم بعد مهلة إرجاع (مثلاً 3 أيام)؟
-8. كي كارد: رقم حساب/محفظة أم رقم البطاقة الـ16؟ (ننصح بغير رقم البطاقة.)
-9. تغيير اسم المتجر أو شعاره بعد التفعيل: إشعار فقط أم موافقة جديدة؟ (الافتراض: إشعار.)
-10. ماذا يظهر للزبون من اسم الرفاعي في تطبيق زاد والكيس والفاتورة؟
-11. من يعلّم الصور المكتوب عليها اسم الرفاعي؟ (246 صورة.)
-12. بريد التأكيد: تسجيل المروّجين يحتاج مرسِل بريد (SMTP) خاصاً؛ بريد Supabase المدمج محدود جداً.
+كلها إعداد أو سطر واحد. **لا يُطبَّق شيء قبل موافقته على 015.**
+
+1. **إغلاق ثغرة التسجيل (015) على القاعدة الحيّة**: موافق؟ (أو إطفاء التسجيل من لوحة Supabase الآن.)
+2. الأساس = سعر المفرد عند الرفاعي (مع كمية الجملة). السعر المعروض في متجر المروّج أعلى دائماً من alrifai.shop.
+3. من اشترى كمية جملة: الفرق للمروّج، لا خصم للزبون.
+4. رفض الاستلام: لا ربح ولا غرامة (أجرة زاد على الرفاعي).
+5. بلا سقف سعر. 6. كل المنتجات. 7. مهلة 3 أيام بعد «مُسلَّم».
+8. هاتف الزبون وملاحظته مخفيان عن المروّج؛ الاسم والمنطقة ظاهران.
+9. كي كارد رقم حساب (6–15 رقماً)؛ 16 رقماً فأكثر مرفوض. **طول حساب كي كارد الفعلي لم يُتحقق منه.**
+10. تغيير الاسم/الشعار بعد التفعيل: إشعار. أثناء المراجعة: ممنوع. الرابط ثابت بعد التفعيل.
+11. طلب الاستلام بكل المتاح دائماً (لا مبلغ جزئي)، وعلى آخر حساب محفوظ.
+12. طلب استلام ملغى/مرفوض لا يعود تلقائياً بنفس المبلغ.
+13. طلب مروّج لا خصم عليه ولا تعديل سعر؛ يُلغى ويُعاد. أجرة التوصيل تُعدَّل.
+14. لا «استلام من المحل» في متاجر المروّجين.
+15. رصيد سالب بعد عكسٍ لاحق للدفع: يُخصم من القادم، بلا مطالبة.
+16. ماذا يظهر من اسم الرفاعي في تطبيق زاد والكيس والفاتورة؟ ومن يعلّم الصور المكتوب عليها الاسم؟
+17. بريد التأكيد للمروّجين يحتاج SMTP خاصاً.
