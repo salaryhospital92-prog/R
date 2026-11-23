@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Search, Save, X, Pencil, Tags, Check, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { packName } from '../../lib/price'
 import { formatIQD } from '../../lib/format'
 
 /**
@@ -12,8 +13,8 @@ import { formatIQD } from '../../lib/format'
  * وحدة البيع، فمن بيده سعر القطعة لمنتج يُباع بالدرزن لم يجد إلا خانة
  * معنونة «سعر الدرزن» — فنشأت أخطاء الضرب في 12.
  *
- * التخزين لا يتغيّر: `price_wholesale` يبقى سعر القطعة دائماً، والوحدة
- * وصفٌ للإدخال والعرض فقط.
+ * الرقم يُحفظ ويُعرض كما كُتب: `price_dozen` ثمن العلبة `pack_qty` (وسعر القطعة × قطعها
+ * إن كانت وحدة الإدخال قطعة). لا قسمة ولا كسور؛ price_wholesale يشتقّه زناد القاعدة للمنى.
  */
 export default function Prices() {
   const [rows, setRows] = useState([])
@@ -28,7 +29,7 @@ export default function Prices() {
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)')
+      .select('id, name, sold_by, price_unit, pack_qty, categories(name), product_prices(price_retail, price_dozen)')
       .eq('store', 'rifai')
       .order('name')
       .then(({ data, error }) => {
@@ -38,9 +39,10 @@ export default function Prices() {
       })
   }, [])
 
-  const perPiece = (r) => r.product_prices?.price_wholesale ?? 0
-  const inUnit = (pieceValue, unit) => (unit === 'dozen' ? pieceValue * 12 : pieceValue)
-  const toPiece = (entered, unit) => (unit === 'dozen' ? Math.round(entered / 12) : Math.round(entered))
+  const dozenOf = (r) => r.product_prices?.price_dozen ?? 0
+  // وحدة «قطعة» تُخزَّن × قطع العلبة فالقسمة هنا ترجع الرقم المكتوب تماماً
+  const inUnit = (dozen, unit, pack) => (unit === 'dozen' ? dozen : dozen / pack)
+  const toDozen = (entered, unit, pack) => Math.round(entered) * (unit === 'dozen' ? 1 : pack)
 
   const startEdit = (r) => {
     setSavedId(null)
@@ -49,31 +51,27 @@ export default function Prices() {
     const unit = r.price_unit ?? 'dozen'
     setDraft({
       retail: String(r.product_prices?.price_retail ?? 0),
-      wholesale: String(inUnit(perPiece(r), unit)),
+      wholesale: String(inUnit(dozenOf(r), unit, r.pack_qty ?? 12)),
       unit,
     })
   }
 
   const cancel = () => { setEditing(null); setDraft({ retail: '', wholesale: '', unit: 'dozen' }) }
 
-  /** تبديل الوحدة يحوّل الرقم ولا يغيّر السعر الحقيقي */
-  const switchUnit = (unit) => {
-    if (unit === draft.unit) return
-    const piece = toPiece(Number(draft.wholesale) || 0, draft.unit)
-    setDraft({ ...draft, unit, wholesale: String(inUnit(piece, unit)) })
-  }
+  /** تبديل الوحدة يغيّر معنى الرقم ولا يغيّر الرقم المكتوب */
+  const switchUnit = (unit) => setDraft({ ...draft, unit })
 
   const save = async (r) => {
     setBusy(true)
     setError('')
     const entered = Math.max(0, Number(draft.wholesale) || 0)
-    const priceWholesale = toPiece(entered, draft.unit)
+    const priceDozen = toDozen(entered, draft.unit, r.pack_qty ?? 12)
 
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
       supabase.from('product_prices').upsert({
         product_id: r.id,
         price_retail: Math.max(0, Math.round(Number(draft.retail) || 0)),
-        price_wholesale: priceWholesale,
+        price_dozen: priceDozen,
         updated_at: new Date().toISOString(),
       }),
       supabase.from('products').update({ price_unit: draft.unit }).eq('id', r.id),
@@ -86,7 +84,7 @@ export default function Prices() {
             ...x, price_unit: draft.unit,
             product_prices: {
               price_retail: Math.max(0, Math.round(Number(draft.retail) || 0)),
-              price_wholesale: priceWholesale,
+              price_dozen: priceDozen,
             },
           }
         : x))
@@ -132,12 +130,16 @@ export default function Prices() {
           {shown.map((r) => {
             const isEditing = editing === r.id
             const retail = r.product_prices?.price_retail ?? 0
-            const piece = perPiece(r)
+            const dozen = dozenOf(r)
+            const packQty = r.pack_qty ?? 12
+            const pack = packName(packQty)
             const unit = r.price_unit ?? 'dozen'
 
             // القيمتان محسوبتان دائماً من الرقم المكتوب ووحدته — لا رقم بلا وحدة
-            const draftPiece = toPiece(Number(draft.wholesale) || 0, draft.unit)
-            const inverted = draftPiece > 0 && Number(draft.retail) > 0 && draftPiece >= Number(draft.retail)
+            const draftDozen = toDozen(Number(draft.wholesale) || 0, draft.unit, packQty)
+            const draftRetail = Number(draft.retail) || 0
+            const inverted = draftDozen > 0 && draftRetail > 0 && draftDozen > draftRetail * packQty
+            const tooLow = draftDozen > 0 && draftRetail > 0 && draftDozen * 2 <= draftRetail * packQty
 
             return (
               <li key={r.id} className={`surface-raised p-4 transition ${isEditing ? 'ring-2 ring-brand-700' : ''}`}>
@@ -170,7 +172,7 @@ export default function Prices() {
                       </span>
                       <div role="group" aria-label="وحدة سعر الجملة" className="mb-2 flex gap-1 rounded-xl bg-ink-100 p-1">
                         {[
-                          { v: 'dozen', t: 'سعر الدرزن', s: '12 قطعة' },
+                          { v: 'dozen', t: `سعر ال${pack}`, s: `${packQty} قطعة` },
                           { v: 'piece', t: 'سعر القطعة', s: 'قطعة واحدة' },
                         ].map((u) => (
                           <button
@@ -188,20 +190,22 @@ export default function Prices() {
                       <input
                         inputMode="numeric" value={draft.wholesale}
                         onChange={(e) => setDraft({ ...draft, wholesale: e.target.value.replace(/\D/g, '') })}
-                        aria-label={draft.unit === 'dozen' ? 'سعر الدرزن' : 'سعر القطعة بالجملة'}
+                        aria-label={draft.unit === 'dozen' ? `سعر ال${pack}` : 'سعر القطعة بالجملة'}
                         className={field}
                       />
                     </div>
 
                     {/* القيمتان معاً دائماً — لا يبقى رقم مجهول الوحدة */}
                     <p className="mt-2 rounded-lg bg-brand-50 px-2 py-1.5 text-center text-[11px] font-bold text-brand-900">
-                      الدرزن {formatIQD(draftPiece * 12)} · القطعة {formatIQD(draftPiece)}
+                      المفرد {formatIQD(draftRetail)} للقطعة · الجملة {formatIQD(draftDozen)} لل{pack} ({packQty})
                     </p>
 
-                    {inverted && (
+                    {(inverted || tooLow) && (
                       <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-bold text-warn-600">
                         <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                        سعر الجملة للقطعة ليس أقل من سعر المفرد — تأكّد من الوحدة المختارة.
+                        {inverted
+                          ? `ثمن ال${pack} أعلى من ${packQty} قطعة بالمفرد — تأكّد من الوحدة المختارة.`
+                          : `ثمن ال${pack} نصف مفرده أو أقل — ربما كتبتَ سعر القطعة.`}
                       </p>
                     )}
 
@@ -234,17 +238,12 @@ export default function Prices() {
                         <p className="flex items-center justify-center gap-1 text-[11px] text-ink-600">
                           الجملة
                           <span className="rounded-full bg-ink-200 px-1.5 py-px text-[10px] font-extrabold text-ink-800">
-                            {unit === 'dozen' ? 'درزن' : 'قطعة'}
+                            {unit !== 'dozen' ? 'قطعة' : packQty === 12 ? 'درزن' : `علبة ${packQty}`}
                           </span>
                         </p>
-                        <p className={`text-sm font-extrabold tabular-nums ${piece ? 'text-brand-800' : 'text-warn-600'}`}>
-                          {piece ? formatIQD(inUnit(piece, unit)) : 'عند الطلب'}
+                        <p className={`text-sm font-extrabold tabular-nums ${dozen ? 'text-brand-800' : 'text-warn-600'}`}>
+                          {dozen ? formatIQD(inUnit(dozen, unit, packQty)) : 'عند الطلب'}
                         </p>
-                        {piece > 0 && (
-                          <p className="text-[10px] text-ink-600">
-                            {unit === 'dozen' ? `القطعة ${formatIQD(piece)}` : `الدرزن ${formatIQD(piece * 12)}`}
-                          </p>
-                        )}
                       </div>
                     </div>
 

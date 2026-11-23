@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Phone, MapPin, RefreshCw, ExternalLink, PackageCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { formatIQD, formatNumber } from '../../lib/format'
+import { itemQtyText } from '../../lib/price'
+import { formatIQD } from '../../lib/format'
 import ZadPanel from '../../components/ZadPanel'
 
 /**
@@ -85,8 +86,7 @@ export default function Dispatch() {
                       <span className="min-w-0 flex-1">
                         {it.name}
                         <span className="text-ink-600">
-                          {' '}× {o.mode === 'wholesale' && it.qty % 12 === 0
-                            ? `${formatNumber(it.qty / 12)} درزن` : `${formatNumber(it.qty)} قطعة`}
+                          {' '}× {itemQtyText(it, o.mode)}
                         </span>
                       </span>
                       <span className="font-bold">

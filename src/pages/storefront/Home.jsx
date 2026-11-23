@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ShoppingCart, Loader2, ChevronLeft, Search, Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { lineTotal } from '../../lib/price'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
 import { STORE, asset } from '../../lib/store'
@@ -86,7 +87,7 @@ export default function Home() {
 
   const subtotal = products.reduce((s, p) => {
     const qty = cart.items[p.id] ?? 0
-    return s + qty * (mode === 'wholesale' ? p.price_wholesale : p.price_retail)
+    return s + lineTotal(p, mode, qty)
   }, 0)
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, ShoppingCart, Loader2, PackageSearch, ChevronRight, X, Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { lineTotal } from '../../lib/price'
 import { formatIQD, formatNumber } from '../../lib/format'
 import { useCart } from '../../context/CartContext'
 import { STORE, asset, contactWhatsappUrl, telUrl } from '../../lib/store'
@@ -64,7 +65,7 @@ export default function Catalog({ mode }) {
 
   const subtotal = products.reduce((sum, p) => {
     const qty = cart.items[p.id] ?? 0
-    return sum + qty * (mode === 'wholesale' ? p.price_wholesale : p.price_retail)
+    return sum + lineTotal(p, mode, qty)
   }, 0)
 
   const isWholesale = mode === 'wholesale'
@@ -156,7 +157,7 @@ export default function Catalog({ mode }) {
               {isWholesale ? 'أسعار الجملة' : 'أسعار المفرد'}
             </h1>
             <p className="mt-0.5 text-[13px] text-ink-600">
-              {isWholesale ? 'بالدرزن' : 'بالقطعة — للاستعمال الشخصي'}
+              {isWholesale ? 'بالدرزن أو العلبة' : 'بالقطعة — للاستعمال الشخصي'}
             </p>
           </div>
           {!loading && shown.length > 0 && (

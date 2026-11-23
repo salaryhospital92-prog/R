@@ -24,7 +24,7 @@ export default function Products() {
     setLoading(true)
     // موظف الإدخال لا يطلب الأسعار إطلاقاً — والخادم لا يعطيه إياها أصلاً (RLS)
     const select = isAdmin
-      ? 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, categories(name), product_prices(price_retail, price_wholesale)'
+      ? 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, pack_qty, categories(name), product_prices(price_retail, price_wholesale, price_dozen)'
       : 'id, barcode, name, description, image_url, quantity_single, category_id, sold_by, price_unit, categories(name)'
 
     const [p, c] = await Promise.all([
@@ -130,10 +130,10 @@ export default function Products() {
                       {' · '}
                       جملة{' '}
                       <span className="rounded-full bg-ink-200 px-1.5 py-px text-[9px] font-extrabold text-ink-800">
-                        {(p.price_unit ?? 'dozen') === 'dozen' ? 'درزن' : 'قطعة'}
+                        {(p.price_unit ?? 'dozen') !== 'dozen' ? 'قطعة' : (p.pack_qty ?? 12) === 12 ? 'درزن' : `علبة ${p.pack_qty}`}
                       </span>{' '}
-                      {p.product_prices.price_wholesale > 0
-                        ? formatIQD(p.product_prices.price_wholesale * ((p.price_unit ?? 'dozen') === 'dozen' ? 12 : 1))
+                      {p.product_prices.price_dozen > 0
+                        ? formatIQD((p.price_unit ?? 'dozen') === 'dozen' ? p.product_prices.price_dozen : p.product_prices.price_wholesale)
                         : 'عند الطلب'}
                     </p>
                   )}

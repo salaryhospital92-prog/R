@@ -4,6 +4,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { itemQtyText } from '../../lib/price'
 import { formatIQD, formatNumber } from '../../lib/format'
 import ZadPanel from '../../components/ZadPanel'
 
@@ -156,14 +157,13 @@ export default function Orders() {
                     <ul className="mb-3 grid gap-2">
                       {(o.items_json ?? []).map((it, i) => {
                         const key = `${o.id}:${it.product_id}`
-                        const byDozen = o.mode === 'wholesale' && it.qty % 12 === 0
                         return (
                           <li key={i}>
                             <div className="flex items-center justify-between gap-2">
                               <span className="min-w-0 flex-1 truncate">
                                 {it.name}
                                 <span className="text-ink-600">
-                                  {' '}× {byDozen ? `${formatNumber(it.qty / 12)} درزن` : `${formatNumber(it.qty)} قطعة`}
+                                  {' '}× {itemQtyText(it, o.mode)}
                                 </span>
                               </span>
                               <span className={it.price_on_request ? 'font-bold text-warn-600' : 'font-bold'}>

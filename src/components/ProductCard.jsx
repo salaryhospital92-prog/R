@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Plus, Minus, ImageOff, AlertTriangle, Tag } from 'lucide-react'
 import { formatIQD, formatNumber } from '../lib/format'
-import { stepFor } from '../context/CartContext'
+import { priceOf, stepFor, minFor, maxFor, packOf, priceNote, qtyText, hasTier, piecesText } from '../lib/price'
 
 /**
  * بطاقة منتج في المعروض.
@@ -10,12 +10,14 @@ import { stepFor } from '../context/CartContext'
  * وكان سابقاً بنفس وزن الاسم فتساوى كل شيء ولم يبرز شيء.
  */
 export default function ProductCard({ product, mode, qty, onChange, index = 0 }) {
-  const step = stepFor(mode, product.sold_by)
-  const byDozen = step === 12
-  const price = mode === 'wholesale' ? product.price_wholesale : product.price_retail
+  const step = stepFor(mode, product)
+  const min = minFor(mode, product)
+  const pack = packOf(product, mode)
+  const price = priceOf(product, mode, qty)
+  const note = priceNote(product, mode)
   const onRequest = price === 0
-  const soldOut = product.quantity_single <= 0
-  const maxQty = Math.floor(product.quantity_single / step) * step
+  const maxQty = maxFor(mode, product)
+  const soldOut = maxQty <= 0
   const low = !soldOut && product.quantity_single <= step * 2
 
   return (
@@ -64,9 +66,10 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
         ) : (
           <p className="price-md text-brand-800">{formatIQD(price)}</p>
         )}
-        {!onRequest && mode === 'wholesale' && (
-          <p className="tnum mt-1 text-[11px] text-ink-600">
-            {byDozen ? `الدرزن ${formatIQD(price * 12)}` : 'يُباع بالقطعة'}
+        {!onRequest && note && <p className="tnum mt-1 text-[11px] text-ink-600">{note}</p>}
+        {mode === 'retail' && hasTier(product) && (
+          <p className="tnum mt-1 text-[11px] font-bold text-brand-800">
+            من {piecesText(product.wholesale_min)}: {formatIQD(product.price_wholesale)} للقطعة
           </p>
         )}
 
@@ -85,7 +88,7 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
           ) : qty === 0 ? (
             <button
               type="button"
-              onClick={() => onChange(Math.min(step, maxQty))}
+              onClick={() => onChange(min)}
               className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-700 py-2.5 text-sm font-bold text-white transition active:scale-95 hover:bg-brand-800"
             >
               <Plus className="size-4" /> إضافة
@@ -93,14 +96,14 @@ export default function ProductCard({ product, mode, qty, onChange, index = 0 })
           ) : (
             <div className="animate-pop flex items-center justify-between rounded-xl bg-brand-50 p-1 ring-1 ring-brand-700/20">
               <button
-                type="button" onClick={() => onChange(Math.max(qty - step, 0))}
+                type="button" onClick={() => onChange(qty - step < min ? 0 : qty - step)}
                 className="flex size-9 items-center justify-center rounded-lg bg-white text-brand-800 ring-1 ring-ink-900/8 transition active:scale-90"
                 aria-label={`إنقاص كمية ${product.name}`}
               >
                 <Minus className="size-4" />
               </button>
               <span className="tnum text-[13px] font-extrabold text-brand-900">
-                {byDozen ? `${formatNumber(qty / 12)} درزن` : `${formatNumber(qty)} قطعة`}
+                {qtyText(qty, pack)}
               </span>
               <button
                 type="button" onClick={() => onChange(Math.min(qty + step, maxQty))} disabled={qty >= maxQty}
