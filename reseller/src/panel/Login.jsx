@@ -70,6 +70,15 @@ export default function Login() {
             <li>٢. سيظهر ثلاثة أرقام: اضغط الرقم الذي تذكّرته ({s.number}).</li>
           </ol>
           <p className="mt-3 text-sm text-stone-500">بعدها تدخل هذه الصفحة وحدها.</p>
+          {import.meta.env.DEV && (
+            <div className="mt-8 rounded-2xl border-2 border-dashed border-amber-400 p-4 text-start" aria-label="تجربة محلية">
+              <p className="mb-3 text-sm font-bold text-amber-700">للتجربة المحلية فقط — يحاكي تيليغرام</p>
+              {[[111, 'ادخل كصاحب «متجر النور» (له طلبات وأرباح)'], [222, 'ادخل كمروّج جديد (يبدأ من المعالج)']].map(([tg, t]) => (
+                <button key={tg} type="button" className="mb-2 min-h-12 w-full rounded-xl bg-amber-100 px-3 text-[15px] font-bold"
+                  onClick={() => fetch('/dev/telegram/auto', { method: 'POST', body: JSON.stringify({ tg, number: s.number }) })}>{t}</button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <button type="button" disabled={s.phase === 'starting'} onClick={() => begin()}

@@ -79,6 +79,16 @@ const devOnly = () => {
           }
           // محاكي تيليغرام
           if (url === '/dev/telegram/last') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ nonce: lastNonce, outbox })) }
+          // زر التجربة في صفحة الدخول: يؤدي خطوات تيليغرام كلها (Start، الرقم، جهة الاتصال) بالمعالج الحقيقي
+          if (url === '/dev/telegram/auto' && req.method === 'POST') {
+            const { tg, number } = JSON.parse((await body(req)).toString())
+            const from = { id: +tg, first_name: +tg === 111 ? 'علي' : 'مروّج جديد' }, chat = { id: +tg, type: 'private' }
+            const hit = async (u) => { outbox = []; await call({ method: 'POST' }, '/webhook', Buffer.from(JSON.stringify(u))); return outbox }
+            await hit({ message: { from, chat, text: `/start login_${lastNonce}` } })
+            const r = await hit({ callback_query: { id: '1', from, message: { chat }, data: `lp:${lastNonce}:${number}` } })
+            if (r.some((m) => m.payload.reply_markup?.keyboard)) await hit({ message: { from, chat, contact: { phone_number: `+96477000${String(tg).padStart(5, '0')}`, user_id: +tg } } })
+            res.setHeader('Content-Type', 'application/json'); return res.end('{"ok":true}')
+          }
           if (url === '/dev/telegram/update' && req.method === 'POST') {
             outbox = []
             const r = await call({ method: 'POST' }, '/webhook', await body(req))
