@@ -105,6 +105,13 @@ export const MUTATIONS = [
   ['الأسرار لـauthenticated', '022_reseller_secrets', "grant execute on function public.reseller_secret(text) to service_role;", "grant execute on function public.reseller_secret(text) to service_role, authenticated;", '11و'],
   ['جدول الأسرار بمنح', '022_reseller_secrets', "revoke all on public.reseller_secrets from public, anon, authenticated, service_role;", "revoke all on public.reseller_secrets from public, anon;", '11د'],
 
+  // --- الدخول داخل القاعدة (023) ---
+  ['ويبهوك بلا سر', '023_reseller_db_login', "if v_secret is null or v_given is distinct from v_secret then return '{}'::jsonb; end if;", "if v_secret is null then return '{}'::jsonb; end if;", '16د'],
+  ['المجموعات تُقبل', '023_reseller_db_login', "or v_chat->>'type' is distinct from 'private' then", "then", '16ز'],
+  ['تبنّي حساب بلا علامة', '023_reseller_db_login', "where id = v_user and raw_app_meta_data->>'reseller_tg' = v_tg::text", "where id = v_user", '16ش'],
+  ['الختم يمسّ الجميع', '023_reseller_db_login', "where id = auth.uid() and raw_app_meta_data ? 'reseller_tg'", "where id = auth.uid()", '16ث'],
+  ['تسجيل الويبهوك لـanon', '023_reseller_db_login', "grant execute on function public.reseller_login_seal() to authenticated;", "grant execute on function public.reseller_login_seal() to authenticated;\ngrant execute on function public.reseller_bot_register(text) to anon;", '11هـ'],
+
   // --- المال ---
   ['المهلة', M, "now() + make_interval(secs => (public.reseller_num('reseller_hold_days', 3) * 86400)::double precision)", 'now()', '1ك'],
   ['المتاح يتجاهل المهلة', M, 'where store_id = p_store and available_at <= now()', 'where store_id = p_store', '1ل'],

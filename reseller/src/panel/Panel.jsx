@@ -38,7 +38,10 @@ export default function Panel() {
   }, [])
 
   const reload = useCallback(async () => {
-    try { setMe(await rpc('reseller_me')); setErr(null) } catch (e) { setErr(errText(e)) }
+    try { setMe(await rpc('reseller_me')); setErr(null) } catch (e) {
+      if (e?.code === 'PGRST301' || e?.code === 'PGRST303') await sb.auth.signOut({ scope: 'local' })     // جلسة لم تعد صالحة: دخول من جديد
+      else setErr(errText(e))
+    }
   }, [])
   useEffect(() => { if (auth === 'in') reload(); else setMe(undefined) }, [auth, reload])
 

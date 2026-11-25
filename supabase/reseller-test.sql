@@ -688,9 +688,9 @@ begin
     'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_secrets: reseller_stores:r reseller_telegram:',
     '11د منح authenticated كما في التصميم');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
-    'reseller_create_order reseller_store reseller_store_products', '11هـ دوال anon');
+    'reseller_bot_webhook reseller_create_order reseller_login_finish reseller_login_start reseller_store reseller_store_products', '11هـ دوال anon');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('authenticated', p.oid, 'execute')),
-    'reseller_adjust reseller_balance reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_create_order reseller_decide_store reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
+    'reseller_adjust reseller_balance reseller_bot_webhook reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_create_order reseller_decide_store reseller_login_finish reseller_login_seal reseller_login_start reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_products reseller_submit_store reseller_telegram_code rifai_orders_net',
     '11و دوال authenticated');
   perform pg_temp.want(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'reseller%' and p.prosecdef and not coalesce(p.proconfig::text ~ 'search_path', false)), '11ز كل دالة definer لها search_path');
 
@@ -1001,4 +1001,99 @@ begin
   perform pg_temp.fails('select public.reseller_secret(''bot_token'')', 'permission denied', '15أ5 ولا للزائر');
   perform pg_temp.out();
   perform pg_temp.fails('insert into public.reseller_secrets (key, value) values (''other'', ''v'')', 'check', '15أ6 مفاتيح محددة فقط');
+end $$;
+
+-- ---------- 16) الدخول داخل القاعدة (023) ----------
+create function pg_temp.hook(p_msg jsonb) returns jsonb language sql as $$ select public.reseller_bot_webhook(p_msg) $$;
+create function pg_temp.msg(p_tg bigint, p_extra jsonb) returns jsonb language sql as $$
+  select jsonb_build_object('message', jsonb_build_object('from', jsonb_build_object('id', p_tg, 'first_name', 'تجربة'), 'chat', jsonb_build_object('type', 'private')) || p_extra) $$;
+create function pg_temp.pick(p_tg bigint, p_nonce text, p_num int) returns jsonb language sql as $$
+  select jsonb_build_object('callback_query', jsonb_build_object('id', 'c1', 'from', jsonb_build_object('id', p_tg), 'message', jsonb_build_object('chat', jsonb_build_object('type', 'private')), 'data', 'lp:' || p_nonce || ':' || p_num)) $$;
+-- محاولة مؤكَّدة كاملة لهاتف جديد أو عائد: يعيد الرمز
+create function pg_temp.confirm(p_tg bigint, p_secret text) returns text language plpgsql as $$
+declare r jsonb; v jsonb; n text;
+begin
+  r := public.reseller_login_start(p_secret); n := r->>'nonce';
+  perform pg_temp.hook(pg_temp.msg(p_tg, jsonb_build_object('text', '/start login_' || n)));
+  v := pg_temp.hook(pg_temp.pick(p_tg, n, (r->>'number')::int));
+  if v->'reply_markup'->'keyboard' is not null then
+    perform pg_temp.hook(pg_temp.msg(p_tg, jsonb_build_object('contact', jsonb_build_object('user_id', p_tg, 'phone_number', '+9647701112233'))));
+  end if;
+  return n;
+end $$;
+do $$
+declare r jsonb; r2 jsonb; v jsonb; sec text := repeat('c', 64); n text; num int; t bigint := 7770001; uid uuid; pw text; adm uuid := pg_temp.f('admin'); before text;
+begin
+  perform pg_temp.out();
+  insert into public.reseller_secrets (key, value) values ('bot_username', 'test_bot'), ('webhook_secret', 'hook-secret'), ('bot_token', 'x:y')
+    on conflict (key) do update set value = excluded.value;
+  delete from public.reseller_logins;        -- فحص الحدّ في 14 ملأ دقيقة هذه المعاملة
+  perform pg_temp.as_('anon');
+  r := public.reseller_login_start(sec); n := r->>'nonce'; num := (r->>'number')::int;
+  perform pg_temp.want(r->>'bot' = 'https://t.me/test_bot?start=login_' || n, '16أ رابط البوت');
+  perform pg_temp.eq(public.reseller_login_finish(n, sec)->>'status', 'waiting', '16ب الانتظار');
+  perform pg_temp.eq(public.reseller_login_finish(n, repeat('d', 64))->>'status', 'expired', '16ج سر خاطئ');
+  perform set_config('request.headers', '{}', true);
+  perform pg_temp.eq(pg_temp.hook(pg_temp.msg(t, jsonb_build_object('text', '/start login_' || n))), '{}'::jsonb, '16د ويبهوك بلا سر لا يفعل شيئاً');
+  perform set_config('request.headers', '{"x-telegram-bot-api-secret-token": "wrong"}', true);
+  perform pg_temp.eq(pg_temp.hook(pg_temp.msg(t, jsonb_build_object('text', '/start login_' || n))), '{}'::jsonb, '16هـ ولا بسر خاطئ');
+  perform set_config('request.headers', '{"x-telegram-bot-api-secret-token": "hook-secret"}', true);
+  perform pg_temp.eq(pg_temp.hook(jsonb_set(pg_temp.msg(t, jsonb_build_object('text', '/start login_' || n)), '{message,chat,type}', '"group"')), '{}'::jsonb, '16ز المجموعات تُتجاهل');
+  v := pg_temp.hook(pg_temp.msg(t, jsonb_build_object('text', '/start login_' || n)));
+  perform pg_temp.want(v->>'method' = 'sendMessage' and (v->>'chat_id')::bigint = t and jsonb_array_length(v->'reply_markup'->'inline_keyboard'->0) = 3, '16و Start يعيد ثلاثة أرقام');
+  v := pg_temp.hook(pg_temp.pick(t, n, num));
+  perform pg_temp.want(v->'reply_markup'->'keyboard'->0->0->>'request_contact' = 'true', '16ح الرقم الصحيح يطلب جهة الاتصال');
+  v := pg_temp.hook(pg_temp.msg(t, jsonb_build_object('contact', jsonb_build_object('user_id', t + 1, 'phone_number', '+9647709999999'))));
+  perform pg_temp.want(v->>'text' like '%رقمك أنت%', '16ط جهة اتصال غيرك');
+  v := pg_temp.hook(pg_temp.msg(t, jsonb_build_object('contact', jsonb_build_object('user_id', t, 'phone_number', '+9647701112233'))));
+  perform pg_temp.want(v->>'text' like 'تم%' and v->'reply_markup'->>'remove_keyboard' = 'true', '16ي جهة اتصالك تُقبل');
+  r := public.reseller_login_finish(n, sec); pw := r->>'password';
+  perform pg_temp.want(r->>'status' = 'ok' and r->>'email' = 'tg7770001@telegram.invalid' and length(pw) = 64, '16ك الصفحة تستلم بيانات دخول لمرة');
+  perform pg_temp.eq(public.reseller_login_finish(n, sec)->>'status', 'expired', '16ل مرة واحدة');
+  perform pg_temp.out();
+  select id into uid from auth.users where email = 'tg7770001@telegram.invalid';
+  perform pg_temp.want((select encrypted_password = extensions.crypt(pw, encrypted_password) from auth.users where id = uid), '16م كلمة السر صالحة');
+  perform pg_temp.want((select raw_app_meta_data->>'reseller_tg' = t::text and email_confirmed_at is not null and confirmation_token = '' and recovery_token = '' and email_change = '' and email_change_token_new = '' and instance_id = '00000000-0000-0000-0000-000000000000' and aud = 'authenticated' and role = 'authenticated' from auth.users where id = uid), '16ن أعمدة المستخدم كما يتوقعها GoTrue');
+  perform pg_temp.want(exists (select 1 from auth.identities where user_id = uid and provider = 'email' and provider_id = uid::text), '16س هوية البريد');
+  perform pg_temp.as_('authenticated', uid);
+  perform pg_temp.want(not public.is_staff() and not public.is_supervisor() and not public.is_admin(), '16ع ليس موظفاً');
+  perform pg_temp.eq(public.reseller_me()->>'phone', '07701112233', '16عأ الهوية جاهزة للمعالج');
+  perform public.reseller_login_seal();
+  perform pg_temp.out();
+  perform pg_temp.want((select encrypted_password <> extensions.crypt(pw, encrypted_password) from auth.users where id = uid), '16ف بعد الختم لا تعمل كلمة السر التي رآها المتصفح');
+
+  perform pg_temp.as_('anon');
+  n := pg_temp.confirm(t, sec);
+  r2 := public.reseller_login_finish(n, sec);
+  perform pg_temp.want(r2->>'status' = 'ok' and r2->>'email' = r->>'email' and r2->>'password' <> pw, '16ق العائد: نفس المستخدم وكلمة سر جديدة');
+  perform pg_temp.out();
+  perform pg_temp.eq((select count(*) from auth.users where email like 'tg777%'), 1::bigint, '16ر لا حساب ثانٍ');
+
+  -- بريد سجّله غيرنا قبلنا (تسجيل عام) لا يُتبنّى
+  insert into auth.users (id, aud, role, email, created_at) values (gen_random_uuid(), 'authenticated', 'authenticated', 'tg7770099@telegram.invalid', now());
+  perform pg_temp.as_('anon');
+  n := pg_temp.confirm(7770099, sec);
+  perform pg_temp.fails(format('select public.reseller_login_finish(%L, %L)', n, sec), 'راجع الإدارة', '16ش بريد محجوز بغير علامتنا');
+  perform pg_temp.out();
+
+  -- هوية تشير إلى حساب موظف (خطأ يدوي مثلاً): لا تُغيَّر كلمة سره
+  insert into public.reseller_identities (telegram_id, user_id, name, phone) values (7770050, adm, 'x', '9647701112250');
+  select encrypted_password into before from auth.users where id = adm;
+  perform pg_temp.as_('anon');
+  n := pg_temp.confirm(7770050, sec);
+  perform pg_temp.fails(format('select public.reseller_login_finish(%L, %L)', n, sec), 'راجع الإدارة', '16ت حساب موظف لا يُمسّ');
+  perform pg_temp.as_('authenticated', adm);
+  perform public.reseller_login_seal();
+  perform pg_temp.out();
+  perform pg_temp.want((select encrypted_password is not distinct from before from auth.users where id = adm), '16ث الختم لا يمسّ حساباً بلا علامتنا');
+  delete from public.reseller_identities where telegram_id = 7770050;
+
+  perform pg_temp.as_('anon');
+  perform pg_temp.fails('select public.reseller_login_seal()', 'permission denied', '16خ الختم ليس للزائر');
+  perform pg_temp.fails('select public.reseller_bot_register(''https://x'')', 'permission denied', '16ذ تسجيل الويبهوك ليس للمتصفح');
+  perform pg_temp.fails('select public.reseller_login_start(''abc'')', 'طلب غير صالح', '16ذأ سر قصير');
+  perform pg_temp.as_('service_role');
+  perform pg_temp.fails('select public.reseller_bot_register(''https://x'')', 'permission denied', '16ض ولا لمفتاح الخدمة');
+  perform pg_temp.out();
+  perform set_config('request.headers', '', true);
 end $$;

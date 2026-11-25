@@ -29,7 +29,13 @@ export const must = (label, r) => { if (r.status !== 0) throw new Error(`${label
 // ما تملكه خدمات Supabase (Auth/Storage) ولا تأتي به صورة Postgres وحدها — مطابق للحيّ
 const BOOT = `
 alter table auth.users add column if not exists email_confirmed_at timestamptz,
-  add column if not exists is_anonymous boolean not null default false;
+  add column if not exists is_anonymous boolean not null default false,
+  add column if not exists email_change_token_new varchar(255);
+-- كما في الحيّ (GoTrue): 023 يكتب فيه
+create table if not exists auth.identities (provider_id text not null, user_id uuid not null references auth.users(id) on delete cascade,
+  identity_data jsonb not null, provider text not null, last_sign_in_at timestamptz, created_at timestamptz, updated_at timestamptz,
+  email text generated always as (lower(identity_data->>'email')) stored, id uuid not null default gen_random_uuid() primary key, unique (provider_id, provider));
+grant select, insert, update, delete on auth.identities to postgres;
 create or replace function auth.uid() returns uuid language sql stable as $$
   select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
     (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $$;
@@ -54,7 +60,8 @@ insert into public.products (name, category_id, sold_by) select n, (select min(i
 update public.product_prices set price_dozen = 102000, price_retail = 10000
  where product_id = (select id from public.products where name = 'عطر Exotic_for man');`
 
-export function start() {
+/** before: يُنفَّذ بعد جاهزية القاعدة وقبل التهيئة (التجربة اليدوية تشغّل GoTrue هنا لينشئ مخطط auth الحقيقي) */
+export function start({ before } = {}) {
   must('docker run', docker(['run', '-d', '--name', name, '--network', process.env.RAFAI_DB_NETWORK ?? 'none', '-e', 'POSTGRES_PASSWORD=local', IMAGE]))
   // التهيئة تعيد التشغيل مرة: ننتظر نجاحين متتاليين عبر TCP
   for (let ok = 0, i = 0; ok < 2; i++) {
@@ -62,6 +69,7 @@ export function start() {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)
     ok = psql('select 1').status === 0 ? ok + 1 : 0
   }
+  before?.()
   must('bootstrap', psql(BOOT, { user: 'supabase_admin' }))
   must('schema.sql', psql(read('supabase/schema.sql')))
   // operations.sql (زاد) يستدعي is_mona_admin التي لا تُنشأ إلا في 010 — بديل مؤقت تستبدله 010

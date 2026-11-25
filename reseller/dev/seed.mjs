@@ -95,6 +95,11 @@ insert into public.reseller_categories (store_id, category_id)
   select s.id, c from public.reseller_stores s, unnest(array[9101, 9102, 9103]) c;
 
 -- مالك «متجر النور» يدخل بتيليغرام برقم 111 (محاكي التطوير). كل من عداه يبدأ من المعالج.
+-- كما ينشئه 023: أعمدة لا يقبل GoTrue فراغها، وعلامة المروّج التي يشترطها الدخول
+update auth.users set instance_id = '00000000-0000-0000-0000-000000000000', confirmation_token = '', recovery_token = '', email_change = '', email_change_token_new = '',
+  raw_app_meta_data = '{"provider":"email","providers":["email"],"reseller_tg":"111"}', raw_user_meta_data = '{}', updated_at = now() where id = '${OWNER}';
+insert into auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
+  values ('${OWNER}', '${OWNER}', jsonb_build_object('sub', '${OWNER}', 'email', 'tg111@telegram.invalid'), 'email', now(), now());
 insert into public.reseller_identities (telegram_id, user_id, name, phone) values (111, '${OWNER}', 'صاحب متجر النور', '9647700000001');
 update public.app_settings set value = '0' where key = 'reseller_hold_days';   -- التجربة: الربح يصير متاحاً فور التسليم
 

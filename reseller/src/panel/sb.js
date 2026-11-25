@@ -17,14 +17,6 @@ export const q = async (query) => {
   return data
 }
 
-const FN = `${API}/functions/v1/reseller-login`
-export const login = async (path, body) => {
-  const r = await fetch(`${FN}/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  const j = await r.json().catch(() => ({}))
-  if (!r.ok) throw Object.assign(new Error(j.error || 'تعذّر الاتصال'), { code: 'P0001' })
-  return j
-}
-
 /** رابط المتجر للمشاركة: متجر.النطاق، أو مسار التطوير */
 export const storeUrl = (slug) => (ROOT ? `https://${slug}.${ROOT}` : `${location.origin}/s/${slug}`)
 

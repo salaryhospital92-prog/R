@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Send, Store } from 'lucide-react'
 import { errText } from '../lib/config'
 import { Notice } from '../ui'
-import { login, sb } from './sb'
+import { rpc, sb } from './sb'
 
 const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('')
 
@@ -17,7 +17,7 @@ export default function Login() {
     setNote(why ?? null); setS({ phase: 'starting' })
     const secret = hex(32)
     try {
-      const r = await login('start', { secret })
+      const r = await rpc('reseller_login_start', { p_secret: secret })
       if (!alive.current) return
       setS({ phase: 'waiting', ...r, secret })
     } catch (e) { setS({ phase: 'error', text: errText(e) }) }
@@ -30,11 +30,13 @@ export default function Login() {
     let stop = false, t
     const tick = async () => {
       try {
-        const r = await login('poll', { nonce: s.nonce, secret: s.secret })
+        const r = await rpc('reseller_login_finish', { p_nonce: s.nonce, p_secret: s.secret })
         if (stop) return
         if (r.status === 'ok') {
-          const { error } = r.session ? await sb.auth.setSession(r.session) : await sb.auth.verifyOtp({ token_hash: r.token_hash, type: 'magiclink' })
+          // كلمة سر عشوائية لمرة: ندخل بها ثم تُبدَّل فوراً (الجلسة تبقى)
+          const { error } = await sb.auth.signInWithPassword({ email: r.email, password: r.password })
           if (error) throw error
+          await rpc('reseller_login_seal').catch(() => {})
           return                                          // onAuthStateChange يُكمل
         }
         if (r.status === 'failed') return begin('الرقم الذي اخترته غير صحيح. حاول مرة أخرى.')
@@ -75,7 +77,7 @@ export default function Login() {
               <p className="mb-3 text-sm font-bold text-amber-700">للتجربة المحلية فقط — يحاكي تيليغرام</p>
               {[[111, 'ادخل كصاحب «متجر النور» (له طلبات وأرباح)'], [222, 'ادخل كمروّج جديد (يبدأ من المعالج)']].map(([tg, t]) => (
                 <button key={tg} type="button" className="mb-2 min-h-12 w-full rounded-xl bg-amber-100 px-3 text-[15px] font-bold"
-                  onClick={() => fetch('/dev/telegram/auto', { method: 'POST', body: JSON.stringify({ tg, number: s.number }) })}>{t}</button>
+                  onClick={() => fetch('/dev/telegram/auto', { method: 'POST', body: JSON.stringify({ tg, number: s.number, nonce: s.nonce }) })}>{t}</button>
               ))}
             </div>
           )}
