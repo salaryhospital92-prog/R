@@ -4,6 +4,11 @@ import { errText } from '../lib/config'
 import { Notice } from '../ui'
 import { rpc, sb } from './sb'
 
+// المحاولة الجارية تُحفظ في الجلسة: فتح تيليغرام قد يعيد تحميل الصفحة، فتستأنفها بدل أن تبدأ جديدة ويضيع تأكيدك
+const KEY = 'razq-login'
+const saved = () => { try { const v = JSON.parse(sessionStorage.getItem(KEY)); return v && Date.now() - v.at < 170000 ? v : null } catch { return null } }
+const keep = (v) => { try { v ? sessionStorage.setItem(KEY, JSON.stringify(v)) : sessionStorage.removeItem(KEY) } catch { /* وضع خاص */ } }
+
 const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('')
 
 /** الدخول عبر تيليغرام: زر واحد يفتح البوت، ثم يضغط الرقم الظاهر هنا. الرمز يُجهَّز عند فتح الصفحة لتكون الضغطة الأولى مباشرة. */
@@ -14,15 +19,18 @@ export default function Login() {
   useEffect(() => () => { alive.current = false }, [])
 
   const begin = async (why) => {
+    keep(null)
     setNote(why ?? null); setS({ phase: 'starting' })
     const secret = hex(32)
     try {
       const r = await rpc('reseller_login_start', { p_secret: secret })
       if (!alive.current) return
-      setS({ phase: 'waiting', ...r, secret })
+      const v = { ...r, secret, at: Date.now() }
+      keep(v)
+      setS({ phase: 'waiting', ...v })
     } catch (e) { setS({ phase: 'error', text: errText(e) }) }
   }
-  useEffect(() => { begin() }, [])
+  useEffect(() => { const v = saved(); v ? setS({ phase: 'waiting', ...v }) : begin() }, [])
 
   // استعلام كل ثانيتين حتى التأكيد أو الانتهاء
   useEffect(() => {
@@ -34,6 +42,7 @@ export default function Login() {
         if (stop) return
         if (r.status === 'ok') {
           // كلمة سر عشوائية لمرة: ندخل بها ثم تُبدَّل فوراً (الجلسة تبقى)
+          keep(null)
           const { error } = await sb.auth.signInWithPassword({ email: r.email, password: r.password })
           if (error) throw error
           await rpc('reseller_login_seal').catch(() => {})
