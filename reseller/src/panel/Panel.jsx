@@ -75,7 +75,7 @@ export default function Panel() {
         <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-brand font-bold text-brand-ink">
           {store.logo_path ? <img src={logoUrl(store.logo_path)} alt="" className="size-full object-cover" referrerPolicy="no-referrer" /> : [...store.name.replace(/^ال(?=.)/, '')][0]}
         </span>
-        <div className="min-w-0 flex-1"><p className="truncate font-extrabold">{store.name}</p><p className="text-[13px] text-stone-500">لوحة المتجر</p></div>
+        <div className="min-w-0 flex-1"><p className="truncate font-extrabold">{store.name}</p><p className="text-[13px] text-stone-500">رزق · لوحة المتجر</p></div>
         <button type="button" onClick={() => sb.auth.signOut()} aria-label="خروج" className="grid size-11 place-items-center rounded-xl text-stone-500 active:bg-stone-100"><LogOut className="size-5" /></button>
       </header>
       <main className="px-4 py-4">

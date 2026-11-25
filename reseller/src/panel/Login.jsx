@@ -51,7 +51,8 @@ export default function Login() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
       <div className="mx-auto mb-6 grid size-16 place-items-center rounded-3xl bg-brand-soft text-brand-deep"><Store className="size-8" aria-hidden="true" /></div>
-      <h1 className="text-center text-2xl font-extrabold">افتح متجرك الإلكتروني</h1>
+      <p className="text-center text-3xl font-extrabold text-brand-deep">رزق</p>
+      <h1 className="mt-2 text-center text-2xl font-extrabold">افتح متجرك الإلكتروني</h1>
       <p className="mt-2 text-center leading-7 text-stone-600">بيع منتجات جاهزة باسمك وشعارك، ونحن نجهّز الطلب ونوصّله.</p>
 
       <div className="mt-8 space-y-3">
