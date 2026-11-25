@@ -685,7 +685,7 @@ begin
       case when has_any_column_privilege('authenticated', c.oid, 'insert') then 'a' end, case when has_any_column_privilege('authenticated', c.oid, 'update') then 'w' end,
       case when has_table_privilege('authenticated', c.oid, 'delete') then 'd' end), ' ' order by c.relname)
      from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'),
-    'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_stores:r reseller_telegram:',
+    'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_secrets: reseller_stores:r reseller_telegram:',
     '11د منح authenticated كما في التصميم');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
     'reseller_create_order reseller_store reseller_store_products', '11هـ دوال anon');
@@ -703,7 +703,7 @@ begin
 
   -- ج) الصفوف التي يراها كل طرف ولا تخصّه
   for t in select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'
-            and c.relname not in ('reseller_identities', 'reseller_logins') order by 1 loop   -- هذان بلا متجر: يغطيهما 14
+            and c.relname not in ('reseller_identities', 'reseller_logins', 'reseller_secrets') order by 1 loop   -- بلا متجر: يغطيها 14 و15
     foreach s in array array['A', 'B', 'N', 'mona', 'sup', 'admin'] loop
       execute format('select count(*) from public.%I x where %s', t.relname, case t.relname when 'reseller_stores' then format('owner_id is distinct from %L', pg_temp.f(s))
         when 'reseller_order_items' then format('not exists (select 1 from public.reseller_orders o where o.order_id = x.order_id and o.store_id = %L)', pg_temp.f(s || '.store'))
@@ -983,4 +983,22 @@ begin
     perform pg_temp.fails(n, 'permission denied', '14أع anon مرفوض: ' || n);
   end loop;
   perform pg_temp.out();
+end $$;
+
+-- ---------- 15) أسرار البوت ----------
+do $$
+declare u uuid := pg_temp.mk_user('T9');
+begin
+  perform pg_temp.out();
+  insert into public.reseller_secrets (key, value) values ('bot_token', 'x:y');
+  perform pg_temp.as_('service_role');
+  perform pg_temp.eq(public.reseller_secret('bot_token'), 'x:y', '15أ1 الدالة تقرأ السرّ لمفتاح الخدمة');
+  perform pg_temp.fails('select * from public.reseller_secrets', 'permission denied', '15أ2 ولا قراءة مباشرة حتى لمفتاح الخدمة');
+  perform pg_temp.as_('authenticated', u);
+  perform pg_temp.fails('select public.reseller_secret(''bot_token'')', 'permission denied', '15أ3 ولا للمتصفح المسجَّل');
+  perform pg_temp.fails('select * from public.reseller_secrets', 'permission denied', '15أ4 ولا الجدول');
+  perform pg_temp.as_('anon');
+  perform pg_temp.fails('select public.reseller_secret(''bot_token'')', 'permission denied', '15أ5 ولا للزائر');
+  perform pg_temp.out();
+  perform pg_temp.fails('insert into public.reseller_secrets (key, value) values (''other'', ''v'')', 'check', '15أ6 مفاتيح محددة فقط');
 end $$;

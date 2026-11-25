@@ -17,7 +17,7 @@ const { seedSql, writeAssets } = await import('./seed.mjs')
 
 const API = 'reseller-dev-api', NET = 'reseller-dev-net', PORT = 3101
 const docker = (...a) => spawnSync('docker', a, { encoding: 'utf8' })
-const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports', '021_reseller_login']
+const DRAFTS = ['015_close_public_signup', '016_rifai_line', '017_reseller_schema', '018_reseller_orders', '019_reseller_money', '020_reseller_reports', '021_reseller_login', '022_reseller_secrets']
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')
 
 const down = () => { docker('rm', '-f', API); docker('rm', '-f', 'reseller-dev-db'); docker('network', 'rm', NET) }

@@ -2,6 +2,7 @@
 //   POST /start    {secret}          ← الصفحة تطلب رمزاً (تحتفظ بالسر ولا يخرج من المتصفح إلا للخادم)
 //   POST /poll     {nonce, secret}   ← الصفحة تسأل: هل ضغط المروّج الرقم الصحيح؟ فتستلم جلسة
 //   POST /webhook  (تيليغرام)        ← /start login_<رمز> ← ثلاثة أرقام ← جهة الاتصال أول مرة
+//   POST /register (ترويسة X-Setup-Secret = سرّ الويبهوك) ← تسجيل الويبهوك من خوادم Supabase (تيليغرام غير متاح من بعض الشبكات)
 // الاعتماديات تُحقن: db (عميل بمفتاح الخدمة)، tg(method, payload)، session(email)، env.
 // كل القرارات الأمنية (الأرقام، الانتهاء، مرة واحدة، جهة اتصال صاحبها) في دوال 021 لا هنا.
 
@@ -76,6 +77,15 @@ export function makeHandler({ db, tg, session, env }) {
     await say(T.pick, { reply_markup: { inline_keyboard: [opts.map((n) => ({ text: String(n), callback_data: `lp:${m[1]}:${n}` }))] } })
   }
 
+  // يسجّل الويبهوك ويتحقق من الرمز (getMe). لا يعمل بلا سرّ الويبهوك الصحيح في الترويسة.
+  async function register(req) {
+    if (!env.WEBHOOK_SECRET || req.headers.get('X-Setup-Secret') !== env.WEBHOOK_SECRET) return json({ error: 'forbidden' }, 403)
+    const me = await tg('getMe', {})
+    if (!me?.ok) return json({ error: 'الرمز غير صالح عند تيليغرام' }, 502)
+    const hook = await tg('setWebhook', { url: env.WEBHOOK_URL, secret_token: env.WEBHOOK_SECRET, allowed_updates: ['message', 'callback_query'], drop_pending_updates: true })
+    return json({ ok: !!hook?.ok, bot: me.result?.username, expected: env.BOT_USERNAME, webhook: env.WEBHOOK_URL, telegram: hook?.description })
+  }
+
   return async (req) => {
     const path = new URL(req.url).pathname.replace(/\/+$/, '')
     if (req.method !== 'POST') return json({ error: 'method' }, 405)
@@ -85,6 +95,7 @@ export function makeHandler({ db, tg, session, env }) {
       if (path.endsWith('/start')) return await start(body)
       if (path.endsWith('/poll')) return await poll(body)
       if (path.endsWith('/webhook')) { await webhook(req, body); return json({ ok: true }) }
+      if (path.endsWith('/register')) return await register(req)
       return json({ error: 'not found' }, 404)
     } catch (e) {
       // تيليغرام يعيد المحاولة على أي غير 200: الخطأ يُسجَّل ويُردّ 200

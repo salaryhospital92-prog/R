@@ -101,6 +101,10 @@ export const MUTATIONS = [
   ['الدخول يربط الإشعارات', L, "insert into public.reseller_telegram (store_id, chat_id, linked_at) values (v_id, i.telegram_id, now())\n  on conflict do nothing;", "", '14أب'],
   ['الرابط المتكرر', L, "and not exists (select 1 from public.reseller_stores where slug = c)", "", '14أو'],
 
+  // --- أسرار البوت (022) ---
+  ['الأسرار لـauthenticated', '022_reseller_secrets', "grant execute on function public.reseller_secret(text) to service_role;", "grant execute on function public.reseller_secret(text) to service_role, authenticated;", '11و'],
+  ['جدول الأسرار بمنح', '022_reseller_secrets', "revoke all on public.reseller_secrets from public, anon, authenticated, service_role;", "revoke all on public.reseller_secrets from public, anon;", '11د'],
+
   // --- المال ---
   ['المهلة', M, "now() + make_interval(secs => (public.reseller_num('reseller_hold_days', 3) * 86400)::double precision)", 'now()', '1ك'],
   ['المتاح يتجاهل المهلة', M, 'where store_id = p_store and available_at <= now()', 'where store_id = p_store', '1ل'],
