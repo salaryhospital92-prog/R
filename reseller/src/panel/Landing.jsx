@@ -3,6 +3,7 @@ import { iqd, num } from '../lib/format'
 import { Button } from '../ui'
 import { rpc, sb } from './sb'
 import { Wordmark } from './Panel'
+import fiqhAudio from '../assets/fiqh-opinion.m4a'
 
 // =====================================================================
 // واجهة رزق قبل الدخول: قصة تتضح بالتمرير.
@@ -12,6 +13,8 @@ import { Wordmark } from './Panel'
 // =====================================================================
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x))
+/** العدد مع المعدود: 1 منتج، 2 منتجان، 3–10 منتجات، 11+ منتجاً */
+const count = (n, [one, two, few, many]) => n === 1 ? one : n === 2 ? two : n >= 3 && n <= 10 ? `${num(n)} ${few}` : `${num(n)} ${many}`
 const part = (p, k, n) => clamp(p * n - k)                 // تقدّم الجزء k من n
 const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const SVH = typeof CSS !== 'undefined' && CSS.supports?.('height', '1svh') ? 'svh' : 'vh'
@@ -19,15 +22,19 @@ const SVH = typeof CSS !== 'undefined' && CSS.supports?.('height', '1svh') ? 'sv
 // ---------- محرك التمرير: مستمع واحد لكل المشاهد ----------
 const scenes = new Set()
 let raf = 0
+let barP = -1
 function tick() {
   raf = 0
-  const vh = innerHeight, de = document.documentElement
-  de.style.setProperty('--page-p', clamp(scrollY / Math.max(1, de.scrollHeight - vh)).toFixed(4))
-  for (const s of scenes) {
+  // القراءات أولاً ثم الكتابة (لا تخطيط قسري)؛ التقدّم على ارتفاع المحتوى المثبّت نفسه (100svh) لا innerHeight
+  // الذي يتغيّر مع شريط عنوان iOS
+  const de = document.documentElement
+  const page = Math.round(clamp(scrollY / Math.max(1, de.scrollHeight - innerHeight)) * 1000) / 1000
+  const next = [...scenes].map((s) => {
     const r = s.el.getBoundingClientRect()
-    const p = Math.round(clamp(-r.top / Math.max(1, r.height - vh)) * 500) / 500
-    if (p !== s.p) { s.p = p; s.set(p) }
-  }
+    return Math.round(clamp(-r.top / Math.max(1, r.height - s.el.firstElementChild.offsetHeight)) * 500) / 500
+  })
+  if (page !== barP) { barP = page; const bar = document.querySelector('.page-bar'); if (bar) bar.style.transform = `scaleX(${page})` }
+  ;[...scenes].forEach((s, i) => { if (next[i] !== s.p) { s.p = next[i]; s.set(next[i]) } })
 }
 const kick = () => { raf ||= requestAnimationFrame(tick) }
 function useProgress(ref) {
@@ -50,7 +57,22 @@ function useProgress(ref) {
 function Pinned({ len, className = '', label, children }) {
   const ref = useRef(null)
   const p = useProgress(ref)
-  if (still) return <section aria-label={label} className={className}>{children(1, true)}</section>
+  // إن كان المحتوى أطول من الشاشة (هاتف قصير أو خط مكبَّر) يُعرض المشهد كاملاً بلا تثبيت بدل أن يُقصّ
+  const [fits, setFits] = useState(true)
+  useEffect(() => {
+    const col = ref.current?.firstElementChild?.firstElementChild
+    if (still || !col || typeof ResizeObserver === 'undefined') return
+    // المحتوى الفعلي فقط (لا الزخارف المطلقة ولا تكبير الشعار): أسفل آخر عنصر مقابل ارتفاع المشهد
+    const flow = [...col.children].filter((k) => getComputedStyle(k).position !== 'absolute')
+    const check = () => {
+      const last = flow.at(-1)
+      if (last && last.offsetTop + last.offsetHeight > col.clientHeight + 1) { setFits(false); ro.disconnect() }
+    }
+    const ro = new ResizeObserver(check)
+    ro.observe(col); flow.forEach((k) => ro.observe(k))
+    return () => ro.disconnect()
+  }, [])
+  if (still || !fits) return <section aria-label={label} className={className}>{children(1, true)}</section>
   return (
     <section ref={ref} aria-label={label} className={`relative ${className}`} style={{ height: `${len * 100}${SVH}` }}>
       <div className="pin sticky top-0 overflow-hidden">{children(p, false)}</div>
@@ -86,61 +108,41 @@ function useZones() {
 
 const Strip = ({ items, reverse, speed, children }) => (
   <div dir="ltr" className="overflow-hidden" aria-hidden="true">
-    <ul className={`marquee flex w-max gap-3 ${reverse ? 'marquee-rev' : ''}`} style={{ '--speed': speed }}>
+    <ul className={`marquee flex w-max [&>li]:mr-3 ${reverse ? 'marquee-rev' : ''}`} style={{ '--speed': speed }}>
       {[...items, ...items].map((x, i) => children(x, i))}
     </ul>
   </div>
 )
 const Img = ({ s, className = '' }) => s?.image_url
   ? <img src={s.image_url} alt="" decoding="async" referrerPolicy="no-referrer" className={`size-full object-cover ${className}`} />
-  : <span className="block size-full bg-wash" />
+  : <span className="skeleton block size-full" />
 
 // =====================================================================
 export default function Landing({ onStart }) {
-  const [shots, setShots] = useState([])
+  const [shots, setShots] = useState(null)   // null: قيد التحميل (يُحجز مكانها فلا تقفز الصفحة)
   const zones = useZones()
   useReveal()
-  useEffect(() => { rpc('reseller_showcase').then((r) => setShots(r ?? [])).catch(() => {}) }, [])
-  const half = Math.ceil(shots.length / 2)
+  useEffect(() => { rpc('reseller_showcase').then((r) => setShots(r ?? [])).catch(() => setShots([])) }, [])
+  const pics = shots ?? Array(12).fill(null), half = Math.ceil(pics.length / 2)
 
   return (
     <>
       {!still && <div className="page-bar fixed inset-x-0 top-0 z-50 h-[3px] bg-gold" aria-hidden="true" />}
 
-      {/* البداية */}
-      <section className="relative isolate pb-12 pt-8">
-        <span className="glow pointer-events-none absolute -top-24 right-[-30%] -z-10 size-[26rem] rounded-full bg-brand/14 blur-3xl" aria-hidden="true" />
-        <span className="glow pointer-events-none absolute top-40 left-[-35%] -z-10 size-80 rounded-full bg-gold/20 blur-3xl [animation-delay:-4s]" aria-hidden="true" />
-        <div className="mx-auto max-w-md px-6">
-          <div className="flex items-start justify-between">
-            <Wordmark size={96} className="mark-in" />
-            <button type="button" onClick={() => onStart('in')} className="min-h-11 rounded-2xl bg-card/70 px-4 text-[14px] font-bold text-ink-2 ring-1 ring-line backdrop-blur hover:bg-card">دخول</button>
-          </div>
-          <p className="reveal mt-7 inline-flex rounded-full bg-gold-soft px-3.5 py-1.5 text-[13px] font-bold text-[#7d5210]">مجاني بالكامل · بلا رأس مال</p>
-          <h1 className="reveal mt-4 text-[42px] font-black leading-[54px] tracking-tight [text-wrap:balance]" style={{ '--d': '80ms' }}>رزقك يبدأ<br />من <span className="text-brand">هاتفك</span></h1>
-          <p className="reveal mt-4 max-w-[34ch] text-[17px] font-light leading-8 text-ink-2" style={{ '--d': '160ms' }}>متجر إلكتروني باسمك، فيه بضاعة جاهزة. أنت تنشر وتبيع، ونحن نجهّز ونوصّل، والربح لك.</p>
-          <div className="reveal mt-7" style={{ '--d': '240ms' }}><Button onClick={() => onStart('new')}>ابدأ متجرك مجاناً</Button></div>
-          {zones.length > 0 && (
-            <p className="rise mt-4 text-center text-[13px] font-medium text-ink-2">
-              <b className="num font-extrabold text-ink">{num(zones.length)}</b> منطقة توصيل، وأجرة كل منطقة معروفة مسبقاً
-            </p>
-          )}
+      <Hero onStart={onStart} zones={zones} />
+      {(shots === null || shots.length >= 4) && (
+        <div className="space-y-3 pb-14 pt-2 [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
+          {[[pics.slice(0, half), false, '52s'], [pics.slice(half), true, '60s']].map(([items, rev, sp], r) => (
+            <Strip key={r} items={items} reverse={rev} speed={sp}>
+              {(s, i) => <li key={i} className="size-28 shrink-0 overflow-hidden rounded-[22px] bg-card shadow-[var(--shadow-card)] ring-1 ring-line/70 sm:size-32"><Img s={s} /></li>}
+            </Strip>
+          ))}
         </div>
-        {shots.length >= 4 && (
-          <div className="mt-11 space-y-3 [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
-            {[[shots.slice(0, half), false, '52s'], [shots.slice(half), true, '60s']].map(([items, rev, sp], r) => (
-              <Strip key={r} items={items} reverse={rev} speed={sp}>
-                {(s, i) => <li key={i} className="size-28 shrink-0 overflow-hidden rounded-[22px] bg-card shadow-[var(--shadow-card)] ring-1 ring-line/70 sm:size-32"><Img s={s} /></li>}
-              </Strip>
-            ))}
-          </div>
-        )}
-        {!still && <p className="mt-10 text-center text-[12px] font-bold text-mute">مرّر لترى كيف يعمل <span className="nudge inline-block">↓</span></p>}
-      </section>
+      )}
 
       <Story />
       <HowWeWork />
-      <Walkthrough shots={shots} zones={zones} />
+      <Walkthrough shots={shots ?? []} zones={zones} />
       <Journey zones={zones} />
 
       <div className="mx-auto max-w-md space-y-20 px-6 pb-4 pt-20">
@@ -149,6 +151,7 @@ export default function Landing({ onStart }) {
           <h2 id="profit" className="reveal mb-6 mt-3 text-[28px] font-black leading-[40px] [text-wrap:balance]">أنت تحدّد ربحك على كل قطعة</h2>
           <ProfitExample zones={zones} />
         </section>
+        <Halal />
         <Coverage zones={zones} />
         <section aria-labelledby="pay" className="reveal rounded-[28px] bg-card p-6 shadow-[var(--shadow-card)]">
           <p className="eyebrow !text-brand">أرباحك</p>
@@ -160,6 +163,53 @@ export default function Landing({ onStart }) {
   )
 }
 
+// ---------- البداية: الشعار كبيراً في منتصف الشاشة، ثم يصغر ويصعد فوق العنوان مع التمرير ----------
+function Hero({ onStart, zones }) {
+  const logo = useRef(null)
+  const [dy, setDy] = useState(0)          // المسافة من موضع الشعار النهائي إلى منتصف الشاشة
+  useEffect(() => {
+    if (still) return
+    const f = () => { const el = logo.current; if (el) setDy(innerHeight / 2 - (el.offsetTop + el.offsetHeight / 2)) }
+    f(); addEventListener('resize', f)
+    return () => removeEventListener('resize', f)
+  }, [])
+  return (
+    <Pinned len={1.9} label="رزق" className="isolate">
+      {(p, st) => {
+        const a = st ? 1 : clamp(p / 0.55), e = a * a * (3 - 2 * a)   // المرحلة الثانية بانسياب
+        return (
+          <div className={`relative mx-auto flex max-w-md flex-col items-center px-6 text-center ${st ? 'py-12' : 'h-full [justify-content:safe_center]'}`}>
+            <span className="glow pointer-events-none absolute -top-24 right-[-30%] -z-10 size-[26rem] rounded-full bg-brand/14 blur-3xl" aria-hidden="true" />
+            <span className="glow pointer-events-none absolute bottom-0 left-[-35%] -z-10 size-80 rounded-full bg-gold/20 blur-3xl [animation-delay:-4s]" aria-hidden="true" />
+            <div ref={logo} className="relative" style={st ? undefined : { transform: `translateY(${(1 - e) * dy}px) scale(${1.85 - 0.85 * e})` }}>
+              {!st && (
+                <span className="pointer-events-none absolute inset-0" style={{ opacity: 1 - e }} aria-hidden="true">
+                  {[0, 1].map((i) => <span key={i} className="halo absolute left-1/2 top-1/2 size-40 rounded-full border-2 border-brand/25" style={{ animationDelay: `${i * 1.6}s` }} />)}
+                </span>
+              )}
+              <Wordmark size={88} className="mark-in relative" />
+            </div>
+            <div className="mt-7 w-full [@media(max-height:680px)]:mt-4" style={st ? undefined : { opacity: e, transform: `translateY(${(1 - e) * 36}px)`, pointerEvents: e > 0.6 ? 'auto' : 'none' }}>
+              <p className="flex flex-wrap justify-center gap-2 text-[13px] font-bold">
+                <span className="rounded-full bg-gold-soft px-3.5 py-1.5 text-[#7d5210]">مجاني بالكامل · بلا رأس مال</span>
+                <button type="button" onClick={() => document.getElementById('halal')?.scrollIntoView({ block: 'center' })} className="rounded-full bg-brand-soft px-3.5 py-1.5 text-brand">متوافق مع الشريعة</button>
+              </p>
+              <h1 className="mt-4 text-[40px] font-black leading-[52px] tracking-tight [@media(max-height:680px)]:mt-3 [@media(max-height:680px)]:text-[32px] [@media(max-height:680px)]:leading-[42px]">رزقك يبدأ من <span className="text-brand">هاتفك</span></h1>
+              <p className="mx-auto mt-3 max-w-[32ch] text-[16.5px] font-light leading-8 text-ink-2 [@media(max-height:680px)]:text-[15px] [@media(max-height:680px)]:leading-7">متجر إلكتروني باسمك، فيه بضاعة جاهزة. أنت تنشر وتبيع، ونحن نجهّز ونوصّل، والربح لك.</p>
+              <div className="mt-6 [@media(max-height:680px)]:mt-4"><Button onClick={() => onStart('new')}>ابدأ متجرك مجاناً</Button></div>
+              {/* ponytail: نص ثابت؛ احذفه حين يُفتح reseller_orders_enabled */}
+              <p className="mt-3 text-[13px] font-bold text-brand">نفتح استقبال الطلبات قريباً إن شاء الله. جهّز متجرك من الآن.</p>
+              {zones.length > 0 && <p className="mt-3 text-[13px] font-medium text-ink-2"><b className="num font-extrabold text-ink">{num(zones.length)}</b> منطقة توصيل، وأجرة كل منطقة معروفة مسبقاً</p>}
+              <p className="mt-2 text-[15px] text-ink-2">لديك متجر؟ <button type="button" onClick={() => onStart('in')} className="min-h-11 font-bold text-ink underline decoration-line decoration-2 underline-offset-8">دخول</button></p>
+            </div>
+            {!st && <p className="absolute inset-x-0 bottom-[7svh] text-[12px] font-bold text-mute" style={{ opacity: 1 - clamp(p / 0.12) }} aria-hidden="true">مرّر لتبدأ <span className="nudge inline-block">↓</span></p>}
+          </div>
+        )
+      }}
+    </Pinned>
+  )
+}
+
 // ---------- الحكاية: الكلمات تضيء مع التمرير ----------
 const STORY = 'حولنا شبابٌ وشابات يملكون الوقت والطموح، ويبحثون عن عمل فلا يجدونه. كثيرٌ منهم يعرف كيف يبيع، لكنه لا يملك مالاً يغامر به في بضاعة قد لا تُباع. فسألنا أنفسنا: ماذا لو حملنا نحن المخاطرة، وتركنا لهم الفرصة؟'.split(' ')
 function Story() {
@@ -168,10 +218,11 @@ function Story() {
       {(p, st) => {
         const lit = p * 1.35 * STORY.length, end = st ? 1 : part(p, 3, 4)
         return (
-          <div className={`relative mx-auto flex max-w-md flex-col justify-center px-6 ${st ? 'py-20' : 'h-full'}`}>
+          <div className={`relative mx-auto flex max-w-md flex-col px-6 ${st ? 'py-20' : 'h-full [justify-content:safe_center]'}`}>
             <span className="pointer-events-none absolute -bottom-24 -left-24 size-72 rounded-full bg-gold/15 blur-3xl" aria-hidden="true" />
             <p className="eyebrow !text-gold">الحكاية</p>
-            <p className="story-text mt-5 font-bold">
+            <p className="sr-only">{STORY.join(' ')}</p>
+            <p className="story-text mt-5 font-bold" aria-hidden="true">
               {STORY.map((w, i) => <span key={i} style={{ opacity: st ? 1 : clamp(lit - i, 0.16, 1) }}>{w} </span>)}
             </p>
             <p className="mt-8 text-[17px] leading-8 text-white/80" style={{ opacity: end, transform: `translateY(${(1 - end) * 18}px)` }}>
@@ -216,16 +267,18 @@ const STEPS = [
   ['ضع ربحك', 'سعرنا ثابت، وأنت تضيف ربحك على كل قطعة.'],
   ['انشر رابط متجرك', 'متجر باسمك وشعارك، تشاركه على صفحاتك والمجموعات.'],
   ['يصلك الطلب', 'الزبون يطلب ويدفع عند الاستلام، ونحن نجهّز ونوصّل.'],
-  ['ربحك في رصيدك', 'بعد التسليم يدخل رصيدك، ويُحوَّل إلى زين كاش أو كي كارد.'],
+  ['ربحك في رصيدك', 'بعد التسليم بأيام قليلة يصبح ربحك متاحاً، فتطلب تحويله إلى زين كاش أو كي كارد.'],
 ]
 const PW = 270, PH = 560
-function usePhoneScale() {
+/** مقياس الهاتف من المساحة المتاحة له فعلاً داخل المشهد (ثابتة لأن المشهد بارتفاع 100svh) */
+function usePhoneScale(ref) {
   const [k, setK] = useState(0.8)
   useEffect(() => {
-    const f = () => setK(clamp((innerHeight * 0.57) / PH, 0.6, 1))
-    f(); addEventListener('resize', f)
-    return () => removeEventListener('resize', f)
-  }, [])
+    if (!ref.current || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([e]) => setK(clamp(Math.min((e.contentRect.height - 8) / PH, (e.contentRect.width - 8) / PW), 0.55, 1)))
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [ref])
   return k
 }
 const Phone = ({ k, children }) => (
@@ -241,8 +294,9 @@ const Phone = ({ k, children }) => (
 )
 
 function Walkthrough({ shots, zones }) {
-  const k = usePhoneScale()
-  const zone = zones.find((z) => z.fee >= 2000 && z.name.length <= 18) ?? zones[0] ?? { name: 'حي الأندلس', fee: 1500 }
+  const box = useRef(null)
+  const k = usePhoneScale(box)
+  const zone = zones.find((z) => z.fee >= 2000 && z.name.length <= 18) ?? zones[0] ?? null   // منطقة حقيقية فقط
   const screens = [S0, S1, S2, S3, S4]
   return (
     <Pinned len={5.5} label="كيف يعمل متجرك، خطوة بخطوة" className="mt-16">
@@ -273,13 +327,13 @@ function Walkthrough({ shots, zones }) {
                   </span>
                 ))}
               </div>
-              <div key={i} className="rise mt-4 min-h-[86px]">
+              <div key={i} className="rise mt-4 min-h-[112px]">
                 <p className="num text-[13px] font-bold text-brand">{`0${i + 1}`} / 05</p>
                 <h3 className="mt-0.5 text-[24px] font-black leading-8">{STEPS[i][0]}</h3>
                 <p className="mt-0.5 text-[15px] leading-6 text-ink-2">{STEPS[i][1]}</p>
               </div>
             </div>
-            <div className="relative mt-4 flex flex-1 justify-center">
+            <div ref={box} className="relative mt-3 flex min-h-0 flex-1 justify-center pb-4">
               <span className="pointer-events-none absolute top-10 size-64 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
               <Phone k={k}>
                 {screens.map((S, j) => (
@@ -319,7 +373,7 @@ function S0({ t, shots }) {
         ))}
       </div>
       <div className="mt-auto flex items-center justify-between rounded-2xl bg-ink px-4 py-3 text-white">
-        <span className="text-[12px] text-white/70">اخترت</span><b className="num text-[15px]">{num(on)} منتجات</b>
+        <span className="text-[12px] text-white/70">اخترت</span><b className="num text-[15px]">{on ? count(on, ['منتج واحد', 'منتجان', 'منتجات', 'منتجاً']) : 'لا شيء بعد'}</b>
       </div>
     </Screen>
   )
@@ -332,7 +386,7 @@ function S1({ t, shots }) {
     <Screen title="ضع ربحك" sub="على كل قطعة">
       <div className="mt-3 overflow-hidden rounded-2xl bg-card ring-1 ring-line">
         <div className="aspect-[4/3]"><Img s={shots[0]} /></div>
-        <p className="line-clamp-1 px-3 pt-2.5 text-[12.5px] font-bold">{shots[0]?.name ?? 'منتج من بضاعتنا'}</p>
+        <p className="flex items-center justify-between px-3 pt-2.5 text-[12.5px] font-bold">منتج من بضاعتنا <span className="rounded-md bg-gold-soft px-1.5 py-0.5 text-[10px] text-[#7d5210]">مثال</span></p>
         <div className="space-y-1.5 px-3 py-3 text-[12.5px]">
           <p className="flex justify-between"><span className="text-mute">سعرنا</span><b className="num">{iqd(10000)}</b></p>
           <p className="flex justify-between"><span className="text-mute">ربحك</span><b className="num text-brand">+ {iqd(profit)}</b></p>
@@ -355,7 +409,7 @@ function S2({ t, shots }) {
       <div className="px-4 pt-11">
         <div className="flex items-center gap-2.5">
           <span className="grid size-10 place-items-center rounded-2xl bg-[#7a3e9d] text-[17px] font-black text-white">ن</span>
-          <span><b className="block text-[15px] font-black">متجر نور</b><span className="text-[11px] text-mute">عطور وعناية · توصيل لكل المناطق</span></span>
+          <span><b className="block text-[15px] font-black">متجر نور</b><span className="text-[11px] text-mute">عطور وعناية · الدفع عند الاستلام</span></span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           {[1, 2, 3, 4].map((j) => (
@@ -384,22 +438,23 @@ function S2({ t, shots }) {
 // 4) طلب جديد يصل، وحالته تتقدّم حتى التسليم
 function S3({ t, shots, zone }) {
   const drop = clamp(t * 4), stage = t < 0.4 ? 0 : t < 0.7 ? 1 : 2
-  const total = 2 * 12500 + zone.fee
+  const where = zone ? `توصيل ${zone.name}` : 'توصيل حسب منطقة الزبون'
+  const total = 2 * 12500 + (zone?.fee ?? 0)
   return (
     <div className="relative h-full px-4 pt-11">
       <div className="rounded-2xl bg-ink p-3 text-white shadow-[var(--shadow-lift)]" style={{ opacity: drop, transform: `translateY(${(1 - drop) * -30}px)` }}>
         <p className="flex justify-between text-[11px] text-white/60"><span>متجر نور</span><span>الآن</span></p>
         <p className="mt-1 text-[14px] font-black">طلب جديد</p>
-        <p className="mt-0.5 line-clamp-1 text-[12px] text-white/80">قطعتان · توصيل {zone.name}</p>
+        <p className="mt-0.5 line-clamp-1 text-[12px] text-white/80">قطعتان · {where}</p>
       </div>
       <div className="mt-3 rounded-2xl bg-card p-3 ring-1 ring-line">
         <div className="flex items-center gap-2.5">
           <span className="size-12 shrink-0 overflow-hidden rounded-xl"><Img s={shots[2]} /></span>
-          <span className="min-w-0 flex-1"><b className="line-clamp-1 text-[12.5px]">{shots[2]?.name ?? 'منتج من بضاعتنا'}</b><span className="num text-[12px] text-mute">2 × {iqd(12500)}</span></span>
+          <span className="min-w-0 flex-1"><b className="line-clamp-1 text-[12.5px]">منتج من بضاعتنا</b><span className="num text-[12px] text-mute">2 × {iqd(12500)} · مثال</span></span>
         </div>
         <div className="mt-3 space-y-1.5 border-t pt-2.5 text-[12px]">
-          <p className="flex justify-between gap-2"><span className="line-clamp-1 text-mute">توصيل {zone.name}</span><b className="num shrink-0">{iqd(zone.fee)}</b></p>
-          <p className="flex justify-between"><span className="text-mute">يدفعه الزبون عند الاستلام</span><b className="num">{iqd(total)}</b></p>
+          {zone && <p className="flex justify-between gap-2"><span className="line-clamp-1 text-mute">{where}</span><b className="num shrink-0">{iqd(zone.fee)}</b></p>}
+          <p className="flex justify-between"><span className="text-mute">يدفعه الزبون عند الاستلام</span><b className="num">{iqd(total)}{zone ? '' : ' + التوصيل'}</b></p>
         </div>
       </div>
       <ol className="mt-4 flex items-center gap-1.5 text-[11px] font-bold">
@@ -436,16 +491,19 @@ function Route({ u }) {
 
 // 5) الربح يدخل الرصيد، ثم طلب التحويل
 function S4({ t }) {
-  const bal = Math.round((clamp(t * 1.6) * 5000) / 100) * 100, sent = t > 0.75
+  const ready = t > 0.4, bal = ready ? Math.round((clamp((t - 0.4) * 4) * 5000) / 100) * 100 : 0, sent = t > 0.8
   return (
     <Screen title="أرباحي">
       <div className="mt-3 rounded-[22px] bg-forest p-4 text-white">
         <p className="text-[11px] text-white/60">رصيدك المتاح</p>
         <p className="num text-[30px] font-black text-gold">{iqd(bal)}</p>
-        <p className="mt-1 text-[11px] text-white/60">قطعتان × ربح {iqd(2500)}</p>
+        <p className="mt-1 text-[11px] text-white/60">{ready ? `قطعتان × ربح ${iqd(2500)}` : 'يصبح الربح متاحاً بعد أيام قليلة من التسليم'}</p>
       </div>
       <div className="mt-3 space-y-2 text-[12px]">
-        <p className="flex justify-between rounded-xl bg-card px-3 py-2.5 ring-1 ring-line"><span>طلب متجر نور · تم التسليم</span><b className="num text-ok">+ {iqd(5000)}</b></p>
+        <p className="flex items-center justify-between rounded-xl bg-card px-3 py-2.5 ring-1 ring-line">
+          <span>طلب متجر نور · تم التسليم</span>
+          <b className={`num rounded-md px-1.5 py-0.5 transition ${ready ? 'text-ok' : 'bg-gold-soft text-[#7d5210]'}`}>{ready ? `+ ${iqd(5000)}` : 'قيد الانتظار'}</b>
+        </p>
       </div>
       <p className="mt-4 text-[12px] font-bold text-ink-2">التحويل إلى</p>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[12px] font-bold">
@@ -461,22 +519,22 @@ function Journey({ zones }) {
   const flow = [
     ['الزبون يطلب من متجرك', 'يختار من رابطك ويطلب، والدفع عند الاستلام.'],
     ['نجهّز الطلب', 'نجمع القطع ونغلّفها ونتحقق منها قبل الخروج.'],
-    ['نوصّله إلى بابه', zones.length ? `إلى ${num(zones.length)} منطقة، وأجرة التوصيل على الزبون.` : 'إلى باب الزبون، وأجرة التوصيل عليه.'],
-    ['يدخل ربحك رصيدك', 'بعد التسليم، ثم يُحوَّل إلى زين كاش أو كي كارد.'],
+    ['نوصّله إلى بابه', zones.length ? `إلى ${num(zones.length)} منطقة، والأجرة على الزبون حسب منطقته.` : 'إلى باب الزبون، وأجرة التوصيل عليه.'],
+    ['ربحك في رصيدك', 'بعد التسليم بأيام قليلة يصبح متاحاً، ويُحوَّل إلى زين كاش أو كي كارد.'],
   ]
   return (
     <Pinned len={3.2} label="ما يحدث بعد أن يطلب زبونك" className="mt-10 bg-ink text-white">
       {(p, st) => {
         const q = st ? 1 : clamp(p * 1.15)
         return (
-          <div className={`relative mx-auto flex max-w-md flex-col px-6 ${st ? 'py-20' : 'h-full justify-center'}`}>
+          <div className={`relative mx-auto flex max-w-md flex-col px-6 ${st ? 'py-20' : 'h-full [justify-content:safe_center]'}`}>
             <span className="pointer-events-none absolute right-[-40%] top-[-10%] size-96 rounded-full bg-brand/30 blur-3xl" aria-hidden="true" />
             <p className="eyebrow !text-gold">بعد أن يطلب زبونك</p>
-            <h2 className="mt-3 text-[30px] font-black leading-[42px]">نحن نكمل الباقي</h2>
-            <div className="relative mt-8">
+            <h2 className="mt-2 text-[30px] font-black leading-[42px]">نحن نكمل الباقي</h2>
+            <div className="relative mt-6">
               <span className="absolute bottom-3 right-[11px] top-3 w-0.5 rounded bg-white/12" aria-hidden="true" />
               <span className="absolute right-[11px] top-3 w-0.5 origin-top rounded bg-gold" style={{ height: `calc((100% - 24px) * ${q})` }} aria-hidden="true" />
-              <ol className="space-y-5">
+              <ol className="space-y-3">
                 {flow.map(([a, b], j) => {
                   const on = clamp(q * 4 - j + 0.15)
                   return (
@@ -484,16 +542,9 @@ function Journey({ zones }) {
                       <span className={`relative z-10 mt-1 grid size-6 shrink-0 place-items-center rounded-full ring-4 ring-ink transition duration-300 ${on >= 1 ? 'bg-gold' : 'bg-white/20'}`}>
                         <span className="num text-[11px] font-black text-ink">{j + 1}</span>
                       </span>
-                      <div className="min-w-0 flex-1 rounded-2xl bg-white/[.06] p-4 ring-1 ring-white/10" style={{ transform: `translateX(${(1 - on) * -14}px)` }}>
+                      <div className="min-w-0 flex-1 rounded-2xl bg-white/[.06] px-4 py-3.5 ring-1 ring-white/10" style={{ transform: `translateX(${(1 - on) * -14}px)` }}>
                         <b className="block text-[17px] font-extrabold">{a}</b>
-                        <span className="mt-1 block text-[14px] leading-6 text-white/70">{b}</span>
-                        {j === 2 && zones.length > 0 && (
-                          <div className="mt-3 [mask-image:linear-gradient(90deg,transparent,#000_10%,#000_90%,transparent)]">
-                            <Strip items={zones.slice(0, 14)} speed="40s">
-                              {(z, i) => <li key={i} className="shrink-0 whitespace-nowrap rounded-full bg-white/10 px-3 py-1 text-[12px]" dir="rtl">{z.name} <b className="num text-gold">{iqd(z.fee)}</b></li>}
-                            </Strip>
-                          </div>
-                        )}
+                        <span className="mt-0.5 block text-[14px] leading-6 text-white/70">{b}</span>
                       </div>
                     </li>
                   )
@@ -535,7 +586,7 @@ function ProfitExample({ zones }) {
       </ol>
       {zone && <p className="relative mt-3 text-[13px] leading-6 text-white/60">أجرة التوصيل يدفعها الزبون حسب منطقته، ولا تُنقص شيئاً من ربحك.</p>}
       <div className="relative mt-6 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
-        <label htmlFor="pcs" className="flex items-baseline justify-between text-[15px]"><span>لو بعت يومياً</span><b className="num text-[18px]">{num(n)} {n === 1 ? 'قطعة' : n <= 10 ? 'قطع' : 'قطعة'}</b></label>
+        <label htmlFor="pcs" className="flex items-baseline justify-between text-[15px]"><span>لو بعت يومياً</span><b className="num text-[18px]">{count(n, ['قطعة واحدة', 'قطعتان', 'قطع', 'قطعة'])}</b></label>
         <input id="pcs" type="range" min="1" max="20" value={n} onChange={(e) => setN(+e.target.value)} className="mt-3 w-full accent-[var(--color-gold)]" />
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div><p className="text-[12px] text-white/60">ربحك في اليوم</p><p className="num text-[22px] font-black">{iqd(n * profit)}</p></div>
@@ -547,6 +598,38 @@ function ProfitExample({ zones }) {
   )
 }
 
+// ---------- متوافق مع الشريعة: الرأي الفقهي بصوته ----------
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+function Halal() {
+  const ref = useRef(null)
+  const [on, setOn] = useState(false)
+  const [at, setAt] = useState(0)
+  const [len, setLen] = useState(32)
+  const toggle = () => { const a = ref.current; if (a.paused) a.play().catch(() => setOn(false)); else a.pause() }
+  return (
+    <section id="halal" aria-labelledby="halal-h" className="reveal scroll-mt-6 rounded-[28px] bg-brand-soft p-6">
+      <p className="eyebrow !text-brand">متوافق مع الشريعة الإسلامية</p>
+      <h2 id="halal-h" className="mt-3 text-[26px] font-black leading-9">ربحٌ حلال، بطريقة واضحة</h2>
+      <p className="mt-3 text-[16px] font-light leading-8 text-ink-2">نحرص أن تكون كل معاملة في رزق متوافقة مع أحكام الشريعة الإسلامية، ونعتمد في طريقة عملنا على رأي فقهي يجيزها. استمع إليه بنفسك:</p>
+      <audio ref={ref} src={fiqhAudio} preload="metadata" onPlay={() => setOn(true)} onPause={() => setOn(false)} onEnded={() => { setOn(false); setAt(0) }}
+        onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)} onLoadedMetadata={(e) => Number.isFinite(e.currentTarget.duration) && setLen(e.currentTarget.duration)} />
+      <div className="mt-5 flex items-center gap-4 rounded-2xl bg-card p-3 pe-4 shadow-[var(--shadow-card)]">
+        <button type="button" onClick={toggle} aria-pressed={on}
+          className="min-h-12 shrink-0 rounded-xl bg-brand px-5 text-[15px] font-bold text-white transition active:scale-[.97]">{on ? 'إيقاف' : 'استمع'}</button>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14px] font-bold">الرأي الفقهي الذي نعتمده</p>
+          <div className="mt-2 flex items-center gap-2.5">
+            <input type="range" min="0" max={len} step="0.1" value={at} aria-label="موضع التشغيل" dir="ltr"
+              onChange={(e) => { ref.current.currentTime = +e.target.value; setAt(+e.target.value) }}
+              className="h-1 min-w-0 flex-1 accent-[var(--color-brand)]" />
+            <span className="num shrink-0 text-[12px] font-medium text-mute" dir="ltr">{mmss(on || at ? at : len)}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ---------- التغطية: من الرمادي، بمناطق وأسعار حقيقية ----------
 function Coverage({ zones }) {
   const half = Math.ceil(Math.min(zones.length, 28) / 2)
@@ -555,7 +638,7 @@ function Coverage({ zones }) {
       <p className="eyebrow !text-brand">أين نوصّل؟</p>
       <h2 id="cover" className="mt-3 text-[30px] font-black leading-[42px]">بدأنا من <span className="text-brand">الرمادي</span></h2>
       <p className="mt-3 text-[16px] font-light leading-8 text-ink-2">
-        {zones.length ? <>نوصّل اليوم إلى <b className="num font-extrabold text-ink">{num(zones.length)}</b> منطقة، وأجرة كل منطقة معروفة قبل الطلب. </> : null}
+        {zones.length ? <>مناطق التوصيل: <b className="num font-extrabold text-ink">{num(zones.length)}</b> منطقة، وأجرة كل منطقة معروفة قبل الطلب. </> : null}
         وسنتوسّع إلى باقي المناطق إن شاء الله.
       </p>
       {zones.length > 3 && (

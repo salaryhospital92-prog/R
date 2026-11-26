@@ -15,7 +15,15 @@ const phoneEmail = (local) => `ph964${local.slice(1)}@phone.invalid`
 
 export default function Login() {
   const [entry, setEntry] = useState(() => (saved() ? 'telegram' : null))   // null | new | in | telegram
-  const toStart = () => document.getElementById('start')?.scrollIntoView({ block: 'start' })   // فوري: الصفحة طويلة
+  // إلى نموذج الدخول فوراً (الصفحة طويلة)، ويبقى عليه إن طالت الصفحة بعد وصول الصور والمناطق، حتى يلمس المستخدم الشاشة
+  const toStart = () => {
+    const go = () => document.getElementById('start')?.scrollIntoView({ block: 'start' })
+    go(); document.getElementById('start-h')?.focus({ preventScroll: true })
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(go); ro.observe(document.body)
+    const stop = () => { ro.disconnect(); removeEventListener('touchstart', stop); removeEventListener('wheel', stop) }
+    addEventListener('touchstart', stop, { passive: true }); addEventListener('wheel', stop, { passive: true }); setTimeout(stop, 5000)
+  }
   const start = (how) => { setEntry(how); requestAnimationFrame(toStart) }
   useEffect(() => { if (saved()) requestAnimationFrame(toStart) }, [])   // العودة من تيليغرام: مباشرة إلى المحاولة الجارية
 
@@ -25,7 +33,7 @@ export default function Login() {
       <div className="mx-auto max-w-md px-6 pb-16 pt-20">
         {/* التسجيل */}
         <section id="start" aria-labelledby="start-h" className="scroll-mt-6">
-          <h2 id="start-h" className="text-[28px] font-black leading-[40px]">{entry === 'in' ? 'أهلاً بعودتك' : 'ابدأ متجرك الآن'}</h2>
+          <h2 id="start-h" tabIndex={-1} className="text-[28px] font-black leading-[40px] outline-none">{entry === 'in' ? 'أهلاً بعودتك' : 'ابدأ متجرك الآن'}</h2>
           <p className="mt-2 text-[15px] text-ink-2">{entry === 'in' ? 'ادخل برقم هاتفك أو بتيليغرام.' : 'دقيقتان، ومجاناً.'}</p>
           <div className="mt-6 grid grid-cols-2 rounded-2xl bg-wash p-1" role="tablist" aria-label="طريقة الدخول">
             {[['phone', 'رقم الهاتف'], ['telegram', 'تيليغرام']].map(([k, label]) => {
