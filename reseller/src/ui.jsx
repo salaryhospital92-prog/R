@@ -17,10 +17,12 @@ export const initial = (name) => [...String(name ?? '').replace(/^ال(?=.)/, ''
 
 export const ProductImage = ({ p, className = '' }) => {
   const [bad, setBad] = useState(false)
+  const [ready, setReady] = useState(false)
   return (
     <div className={`relative aspect-square overflow-hidden bg-wash ${className}`}>
       {p.image_url && !bad
-        ? <img src={p.image_url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBad(true)} className="size-full object-cover" />
+        ? <img src={p.image_url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBad(true)} onLoad={() => setReady(true)}
+            className={`size-full object-cover transition-opacity duration-500 ${ready ? 'opacity-100' : 'opacity-0'}`} />
         : <span className="absolute inset-0 grid place-items-center px-3 text-center text-[13px] font-medium leading-5 text-mute">{p.name}</span>}
     </div>
   )

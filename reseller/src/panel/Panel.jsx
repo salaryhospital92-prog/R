@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import logo from '../assets/razq-logo.png'
 import { Home as HomeIcon, LayoutGrid, Menu, ReceiptText, Wallet } from 'lucide-react'
 import { errText, logoUrl } from '../lib/config'
 import { Button, StateScreen, initial } from '../ui'
@@ -19,7 +20,12 @@ const useHash = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delet
 // أيقونات شريط التنقل وحدها في اللوحة، وكلها بتسمية
 const TABS = [['', 'الرئيسية', HomeIcon], ['products', 'المنتجات', LayoutGrid], ['orders', 'الطلبات', ReceiptText], ['money', 'أرباحي', Wallet], ['more', 'المزيد', Menu]]
 
-export const Wordmark = ({ className = '' }) => <span className={`font-black tracking-tight text-brand ${className}`}>رزق</span>
+/** شعار رزق: قناع يأخذ لون العلامة (--brand)، فيتغيّر لونه من مكان واحد */
+const LOGO_RATIO = 299 / 640
+export const Wordmark = ({ size = 40, className = '' }) => (
+  <span role="img" aria-label="رزق" className={`inline-block shrink-0 bg-brand ${className}`}
+    style={{ height: size, width: Math.round(size * LOGO_RATIO), WebkitMask: `url(${logo}) center / contain no-repeat`, mask: `url(${logo}) center / contain no-repeat` }} />
+)
 
 export default function Panel() {
   const [auth, setAuth] = useState('loading')          // loading | out | in
@@ -48,7 +54,7 @@ export default function Panel() {
   }, [])
 
   const store = me?.store
-  if (auth === 'loading' || (auth === 'in' && me === undefined && !err)) return <div className="grid min-h-dvh place-items-center"><Wordmark className="text-[34px] opacity-60" /></div>
+  if (auth === 'loading' || (auth === 'in' && me === undefined && !err)) return <div className="grid min-h-dvh place-items-center"><Wordmark size={72} className="animate-pulse" /></div>
   if (auth === 'out') return <Login />
   if (err) return <StateScreen title="تعذّر التحميل" text={err} action={<Button variant="ink" onClick={reload}>إعادة المحاولة</Button>} />
   if (!me) return <StateScreen title="هذا الحساب ليس حساب متجر" text="ادخل برقم هاتفك أو بحساب تيليغرام الخاص بك." action={<Button variant="ink" onClick={() => sb.auth.signOut()}>خروج</Button>} />
@@ -62,7 +68,7 @@ export default function Panel() {
         <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl text-[19px] font-black text-white" style={{ background: store.theme_color }}>
           {store.logo_path ? <img src={logoUrl(store.logo_path)} alt="" className="size-full object-cover" referrerPolicy="no-referrer" /> : initial(store.name)}
         </span>
-        <div className="min-w-0 flex-1"><p className="truncate text-[17px] font-extrabold leading-6">{store.name}</p><p className="text-[12px] text-mute">لوحة متجرك على <Wordmark className="text-[12px]" /></p></div>
+        <div className="min-w-0 flex-1"><p className="truncate text-[17px] font-extrabold leading-6">{store.name}</p><p className="text-[12px] text-mute">لوحة متجرك على <b className="font-extrabold text-brand">رزق</b></p></div>
         <button type="button" onClick={() => sb.auth.signOut()} className="min-h-11 rounded-2xl px-3 text-[13px] font-bold text-mute hover:bg-wash hover:text-ink">خروج</button>
       </header>
       <main className="px-5 pt-2">

@@ -120,6 +120,10 @@ export const MUTATIONS = [
   ['التعديل لا يعيد المراجعة', '024_razq_products_and_phone', "status = case when v_changed then 'pending' else status end", "status = status", '17هـ4'],
   ['هاتف مكرر بكلمة سر', '024_razq_products_and_phone', "if exists (select 1 from public.reseller_identities where phone = v_phone) or ", "if ", '17أ12'],
   ['الاختيار يُظهر غير المختار', '024_razq_products_and_phone', "select s, p.id, p.id = any (p_ids)", "select s, p.id, true", '17ب2'],
+  ['إرسال بلا حساب استلام', '024_razq_products_and_phone', "if not exists (select 1 from public.reseller_payout_accounts where store_id = s.id and is_current) then", "if false then", '14أي1'],
+  ['الواجهة تعرض المخفي', '024_razq_products_and_phone', "where p.is_active and p.store = 'rifai' and not p.reseller_hidden and coalesce(p.image_url, '') <> ''", "where p.is_active and p.store = 'rifai' and coalesce(p.image_url, '') <> ''", '17ط2'],
+  ['الواجهة تعرض منتجات المنى', '024_razq_products_and_phone', "where p.is_active and p.store = 'rifai' and not p.reseller_hidden", "where p.is_active and not p.reseller_hidden", '17ط2'],
+  ['الواجهة بلا ترتيب المالك', '024_razq_products_and_phone', "   order by k.n\n", "   order by p.name\n", '17ط2'],
   ['حد الهاتف للخاص', '024_razq_products_and_phone', "and public.zad_canonical_phone(customer_phone) = v_phone) >= 5 then", "and public.zad_canonical_phone(customer_phone) = v_phone) >= 500 then", '17و13'],
 
   // --- المال ---

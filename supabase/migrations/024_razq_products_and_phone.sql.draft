@@ -461,17 +461,58 @@ exception when others then
 end $$;
 
 -- ---------------------------------------------------------------------
+-- واجهة رزق: منتجات مختارة يدوياً تُعرض قبل الدخول (اسم وصورة فقط)
+-- القائمة يضعها المالك في app_settings.reseller_showcase (معرّفات مفصولة بفواصل). فارغة = لا شريط.
+-- لا ترتيب تلقائي: الصور تُراجَع بالعين (بلا صور نساء ولا اسم المحل داخل الصورة).
+-- ---------------------------------------------------------------------
+-- 14 صورة راجعها المساعد بالعين على الحيّ (2026-11-26): عطور، ساعة، أدوات حلاقة، عناية — بلا وجوه ولا اسم محل.
+-- المعرّفات غير الموجودة تُتجاهل (فلا أثر لها محلياً).
+insert into public.app_settings (key, value) values ('reseller_showcase', '43d9bf49-7fae-4b52-8a27-e53ba6edc2b7,d87ef409-d4e3-4bfc-966e-6636bbca4f13,9f90a0f3-2b83-4daf-9582-23d323df2870,def6e32b-0486-4d1f-b939-86e7fcda09d9,39a0b2bf-4d6f-4631-95d3-e741f092da02,a1337eeb-3034-4c08-9f1c-08163e32b9f5,d879689d-f981-4e74-8a52-c5b653b033e8,279e132d-2c0e-4358-be51-5004685cbfd7,6ac93a6d-6cd4-40ea-9e13-8e7d6290eb87,58512d46-f638-4582-b9ed-ccd71f9e1376,b92afe37-9bed-4487-8732-95fd23ef9ffd,a9f4dd29-b1a0-4432-8f44-09bcba6862f6,de5a34bd-9d64-42e6-b282-05385fc40915,1a043cf9-372e-4852-b0f0-ca01db5751a2') on conflict (key) do nothing;
+
+create or replace function public.reseller_showcase() returns table (name text, image_url text)
+language sql stable security definer set search_path = public as $$
+  select p.name, p.image_url
+    from unnest(string_to_array(regexp_replace(coalesce(public.reseller_cfg('reseller_showcase'), ''), '\s', '', 'g'), ',')) with ordinality k(id, n)
+    join public.products p on p.id::text = k.id
+   where p.is_active and p.store = 'rifai' and not p.reseller_hidden and coalesce(p.image_url, '') <> ''
+   order by k.n
+   limit 24
+$$;
+
+-- الإرسال للموافقة يتطلب حساب استلام الأرباح (قرار المالك 2026-11-26: يُضاف عند التسجيل)
+create or replace function public.reseller_submit_store() returns void
+language plpgsql security definer set search_path = public as $$
+declare s public.reseller_stores;
+begin
+  select * into s from public.reseller_stores where owner_id = auth.uid() for no key update;
+  if not found then raise exception 'أنشئ متجرك أولاً'; end if;
+  if s.status not in ('draft', 'rejected') then raise exception 'المتجر مُرسَل سابقاً'; end if;
+  if not exists (select 1 from public.reseller_categories where store_id = s.id) then raise exception 'اختر صنفاً واحداً على الأقل'; end if;
+  if not exists (select 1 from public.reseller_payout_accounts where store_id = s.id and is_current) then
+    raise exception 'أضف حساب زين كاش أو كي كارد لاستلام أرباحك';
+  end if;
+  update public.reseller_stores set status = 'pending', status_reason = null where id = s.id;
+  perform public.reseller_notify_admins('🏬 متجر مروّج جديد بانتظار التفعيل' || E'\nالاسم: ' || s.name || E'\nالرابط: ' ||
+      coalesce(public.reseller_cfg('reseller_url') || '/', '') || s.slug ||
+      case when s.logo_path is not null then E'\nالشعار: ' || s.logo_path else E'\nبلا شعار' end,
+    jsonb_build_array(jsonb_build_array(
+      jsonb_build_object('text', '✅ تفعيل', 'callback_data', 'rsok:' || s.id),
+      jsonb_build_object('text', '✖️ رفض',  'callback_data', 'rsno:' || s.id))));
+end $$;
+
+-- ---------------------------------------------------------------------
 -- الصلاحيات
 -- ---------------------------------------------------------------------
 revoke all on function public.reseller_phone_register(text, text, text), public.reseller_pick_products(uuid[]),
   public.reseller_suggestions(int), public.reseller_own_image_count(), public.reseller_razq_send(bigint, text, jsonb),
   public.reseller_notify_owner(uuid, text), public.reseller_own_save(jsonb), public.reseller_own_delete(uuid),
   public.reseller_own_set_fee(bigint), public.reseller_own_decide(uuid, text, text, bigint), public.reseller_store_own(text),
-  public.reseller_checkout(text, text, text, jsonb, jsonb, int, text, bigint, bigint), public.reseller_own_order_set(uuid, text)
+  public.reseller_checkout(text, text, text, jsonb, jsonb, int, text, bigint, bigint), public.reseller_own_order_set(uuid, text),
+  public.reseller_showcase()
   from public, anon, authenticated, service_role;
 revoke all on function public.reseller_notify_admins(text, jsonb), public.reseller_bot_webhook(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.reseller_bot_webhook(jsonb) to anon, authenticated;
-grant execute on function public.reseller_phone_register(text, text, text), public.reseller_store_own(text),
+grant execute on function public.reseller_phone_register(text, text, text), public.reseller_store_own(text), public.reseller_showcase(),
   public.reseller_checkout(text, text, text, jsonb, jsonb, int, text, bigint, bigint) to anon, authenticated;
 grant execute on function public.reseller_pick_products(uuid[]), public.reseller_suggestions(int), public.reseller_own_image_count(),
   public.reseller_own_save(jsonb), public.reseller_own_delete(uuid), public.reseller_own_set_fee(bigint),

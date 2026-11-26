@@ -11,22 +11,24 @@ function Card({ p }) {
   const line = items.find((i) => i.p.id === p.id)
   const ok = inStock(p)
   return (
-    <li className="group flex flex-col">
-      <Link to={`/p/${p.id}`} className="block overflow-hidden rounded-[20px] bg-card shadow-[var(--shadow-card)]" aria-label={p.name}>
-        <ProductImage p={p} className={`transition duration-300 group-hover:scale-[1.02] ${ok ? '' : 'opacity-45 grayscale'}`} />
+    <li className="group flex flex-col overflow-hidden rounded-[22px] bg-card shadow-[var(--shadow-card)] ring-1 ring-line/60">
+      <Link to={`/p/${p.id}`} className="block overflow-hidden" aria-label={p.name}>
+        <ProductImage p={p} className={`transition duration-500 group-hover:scale-[1.03] ${ok ? '' : 'opacity-45 grayscale'}`} />
       </Link>
-      <div className="flex flex-1 flex-col px-1 pt-3">
-        <Link to={`/p/${p.id}`} className="line-clamp-2 min-h-11 text-[15px] font-medium leading-[22px] text-ink">{p.name}</Link>
-        <p className="num mt-1.5 text-[18px] font-extrabold">{iqd(p.price)}</p>
-        <p className="min-h-5 text-[12.5px] leading-5 text-mute">{p.pack_qty ? priceNote(p) : minNote(p)}</p>
-        <div className="mt-auto pt-3">
-          {!ok ? <p className="grid min-h-12 place-items-center rounded-full bg-wash text-[14px] font-bold text-mute">نفدت الكمية</p>
-            : line ? <Stepper size="sm" value={line.units} min={minUnits(p)} max={maxUnits(p)} label={p.name}
-                onChange={(u) => cart.setUnits(p, u)} onRemove={() => cart.remove(p.id)} />
-            : <button type="button" onClick={() => cart.setUnits(p, minUnits(p))}
-                className="min-h-12 w-full rounded-full bg-ink text-[14px] font-bold text-white transition active:scale-[.98]">
-                أضف إلى السلة
-              </button>}
+      <div className="flex flex-1 flex-col p-3 pt-2.5">
+        <Link to={`/p/${p.id}`} className="line-clamp-2 text-[14.5px] font-medium leading-[22px] text-ink">{p.name}</Link>
+        {(p.pack_qty || p.min_qty > 1) && <p className="mt-0.5 text-[12px] leading-5 text-mute">{p.pack_qty ? priceNote(p) : minNote(p)}</p>}
+        <div className="mt-auto pt-2.5">
+          <p className="num text-[17px] font-extrabold leading-6">{iqd(p.price)}</p>
+          <div className="mt-2.5">
+            {!ok ? <p className="grid min-h-11 place-items-center rounded-2xl bg-wash text-[13px] font-bold text-mute">نفدت الكمية</p>
+              : line ? <Stepper size="sm" value={line.units} min={minUnits(p)} max={maxUnits(p)} label={p.name}
+                  onChange={(u) => cart.setUnits(p, u)} onRemove={() => cart.remove(p.id)} />
+              : <button type="button" onClick={() => cart.setUnits(p, minUnits(p))}
+                  className="min-h-11 w-full rounded-2xl bg-brand text-[14px] font-bold text-brand-ink transition hover:brightness-95 active:scale-[.97]">
+                  أضف للسلة
+                </button>}
+          </div>
         </div>
       </div>
     </li>
@@ -94,7 +96,7 @@ export default function Home() {
           <p className="py-20 text-center text-[16px] text-mute">{products.length ? 'لا نتائج مطابقة لبحثك' : 'لا توجد منتجات في المتجر حالياً'}</p>
         ) : (
           <>
-            <ul className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3">{list.slice(0, more).map((p) => <Card key={p.id} p={p} />)}</ul>
+            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">{list.slice(0, more).map((p) => <Card key={p.id} p={p} />)}</ul>
             {list.length > more && (
               <button type="button" onClick={() => setMore(more + PAGE)} className="mt-8 min-h-13 w-full rounded-2xl bg-card font-bold ring-1 ring-line">عرض المزيد</button>
             )}

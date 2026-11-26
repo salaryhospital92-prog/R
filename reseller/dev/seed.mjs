@@ -1,6 +1,6 @@
 // بيانات تجربة وهمية بالكامل لقاعدة المروّجين المحلية (لا شيء من الحيّ). تُولَّد SQL وصوراً SVG.
 // لا صور نساء ولا وجوه: أشكال منتجات مجرّدة فقط.
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 export const OWNER = '00000000-0000-4000-8000-0000000000a1'
@@ -60,8 +60,13 @@ export function writeAssets() {
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`
 
+// صور المنتجات الحقيقية (اختياري، غير متتبَّع): مصفوفة بترتيب P من {name, image} أو null. بدونها رسوم بسيطة.
+const LIVE_FILE = fileURLToPath(new URL('./catalog.local', import.meta.url))
+const LIVE = existsSync(LIVE_FILE) ? JSON.parse(readFileSync(LIVE_FILE, 'utf8')) : []
+
 export function seedSql() {
-  const rows = P.map((r, i) => `(${pid(i + 1)}, ${q(r[0])}, ${r[1]}, ${q(r[2])}, ${r[3]}, ${r[4]}, ${r[5]}, '/dev-img/p/${i + 1}.svg', ${i === HIDDEN - 1})`)
+  const rows = P.map((r, i) => `(${pid(i + 1)}, ${q(LIVE[i]?.name ?? r[0])}, ${r[1]}, ${q(r[2])}, ${r[3]}, ${r[4]}, ${r[5]}, ${q(LIVE[i]?.image ?? `/dev-img/p/${i + 1}.svg`)}, ${i === HIDDEN - 1})`)
+  const showcase = LIVE.map((x, i) => (x ? pid(i + 1) : null)).filter(Boolean).slice(0, 14).join(', ')
   const prices = P.map((r, i) => `(${pid(i + 1)}, ${r[6]}, ${r[7]}, ${r[8] || `round(${r[7]}::numeric / ${r[3]})`})`)
   const stock = P.map((r, i) => (r[9] > 0 ? `(${pid(i + 1)}, 'stock_in', ${r[9]})` : null)).filter(Boolean)
   const users = [[OWNER, 'owner'], ['00000000-0000-4000-8000-0000000000a2', 'two'], ['00000000-0000-4000-8000-0000000000a3', 'three'], ['00000000-0000-4000-8000-0000000000a4', 'four']]
@@ -86,6 +91,7 @@ update public.delivery_zones set zad_zone_id = 'dev-' || id where name in ('ال
 
 update public.app_settings set value = '' where key in ('telegram_bot_token', 'telegram_chat_id');
 update public.app_settings set value = 'on' where key = 'reseller_orders_enabled';
+update public.app_settings set value = coalesce((select string_agg(v::text, ',' order by n) from unnest(array[${showcase}]::uuid[]) with ordinality t(v, n)), '') where key = 'reseller_showcase';
 
 -- ثلاثة متاجر: فعّال بشعار، فعّال بلون فاتح بلا شعار، وموقوف
 insert into public.reseller_stores (owner_id, slug, name, logo_path, theme_color, phone, whatsapp, about, status, markup_type, markup_value, round_to) values

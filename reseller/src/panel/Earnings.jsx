@@ -4,12 +4,12 @@ import { iqd, latin } from '../lib/format'
 import { Badge, Button, Field, Notice, Sheet, field } from '../ui'
 import { q, rpc, sb } from './sb'
 
-const METHOD = { zaincash: 'زين كاش', qicard: 'كي كارد' }
+export const METHOD = { zaincash: 'زين كاش', qicard: 'كي كارد' }
 const PSTATUS = { open: ['بانتظار التحويل', 'warn'], paid: ['تم التحويل', 'ok'], cancelled: ['ألغيتَه', 'mute'], rejected: ['رُفض', 'bad'] }
 const mask = (n) => `••••${String(n).slice(-4)}`
 const when = (t) => new Date(t).toLocaleDateString('ar-IQ-u-nu-latn', { dateStyle: 'medium' })
 
-/** أرباحي: الأرقام بلغة بسيطة. حساب الاستلام يُطلب عند أول طلب استلام لا عند التسجيل. */
+/** أرباحي: الأرقام بلغة بسيطة. حساب الاستلام يُضاف في معالج التسجيل، ويُغيَّر من هنا. */
 export default function Earnings({ me, flash }) {
   const [bal, setBal] = useState(null)
   const [accts, setAccts] = useState([])
@@ -64,7 +64,7 @@ export default function Earnings({ me, flash }) {
         <div className="flex items-center justify-between"><h2 className="text-[16px] font-extrabold">حساب الاستلام</h2>
           <button type="button" onClick={() => setSheet(true)} className="min-h-11 px-1 text-[14px] font-bold underline decoration-line decoration-2 underline-offset-8">{accts.length ? 'تغيير' : 'إضافة'}</button></div>
         {accts.length ? accts.map((a) => <p key={a.id} className="mt-1 text-[15px]">{METHOD[a.method]} · <span dir="ltr" className="num">{mask(a.account_no)}</span> · {a.holder_name}</p>)
-          : <p className="mt-1 text-[15px] leading-7 text-ink-2">لم تضف حساباً بعد. سنطلبه منك عند أول طلب استلام.</p>}
+          : <p className="mt-1 text-[15px] leading-7 text-ink-2">لم تضف حساباً بعد. أضفه لنحوّل لك أرباحك.</p>}
       </section>
 
       {pays.length > 0 && (
@@ -81,6 +81,11 @@ export default function Earnings({ me, flash }) {
 }
 
 function AccountSheet({ cur, holder, onClose, onSaved }) {
+  return <Sheet title="أين تستلم أرباحك؟" onClose={onClose}><AccountForm cur={cur} holder={holder} onSaved={onSaved} /></Sheet>
+}
+
+/** حساب الاستلام: زين كاش (رقم الهاتف) أو كي كارد (رقم الحساب فقط). يُستعمل في المعالج وفي «أرباحي». */
+export function AccountForm({ cur, holder, onSaved, label = 'حفظ' }) {
   const [method, setMethod] = useState(cur?.method ?? 'zaincash')
   const [no, setNo] = useState('')
   const [name, setName] = useState(cur?.holder_name ?? holder ?? '')
@@ -93,19 +98,17 @@ function AccountSheet({ cur, holder, onClose, onSaved }) {
     try { await rpc('reseller_save_payout_account', { p_method: method, p_account_no: n, p_holder: name.trim() }); onSaved(method) } catch (x) { setErr(errText(x)) } finally { setBusy(false) }
   }
   return (
-    <Sheet title="أين تستلم أرباحك؟" onClose={onClose}>
-      <form onSubmit={save} className="space-y-5">
-        <div className="grid grid-cols-2 rounded-2xl bg-wash p-1" role="radiogroup">
-          {Object.entries(METHOD).map(([k, v]) => <button key={k} type="button" role="radio" aria-checked={method === k} onClick={() => setMethod(k)}
-            className={`min-h-12 rounded-xl text-[15px] ${method === k ? 'bg-card font-bold shadow-[var(--shadow-card)]' : 'font-medium text-mute'}`}>{v}</button>)}
-        </div>
-        {err && <Notice tone="bad">{err}</Notice>}
-        <Field id="acc" label={method === 'zaincash' ? 'رقم هاتف زين كاش' : 'رقم حساب كي كارد'} hint="رقم الحساب فقط. لا تكتب رقم البطاقة كاملاً ولا الرمز السري ولا تاريخ الانتهاء ولا رمز التحقق.">
-          <input id="acc" inputMode="numeric" dir="ltr" value={no} onChange={(e) => setNo(e.target.value)} placeholder={method === 'zaincash' ? '07701234567' : ''} autoComplete="off" className={`${field} num text-start text-[18px]`} />
-        </Field>
-        <Field id="hold" label="اسم صاحب الحساب"><input id="hold" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} className={field} /></Field>
-        <Button variant="ink" type="submit" disabled={busy || bad || name.trim().length < 2}>{busy ? 'لحظة…' : 'حفظ'}</Button>
-      </form>
-    </Sheet>
+    <form onSubmit={save} className="space-y-5">
+      <div className="grid grid-cols-2 rounded-2xl bg-wash p-1" role="radiogroup" aria-label="طريقة الاستلام">
+        {Object.entries(METHOD).map(([k, v]) => <button key={k} type="button" role="radio" aria-checked={method === k} onClick={() => setMethod(k)}
+          className={`min-h-12 rounded-xl text-[15px] ${method === k ? 'bg-card font-bold shadow-[var(--shadow-card)]' : 'font-medium text-mute'}`}>{v}</button>)}
+      </div>
+      {err && <Notice tone="bad">{err}</Notice>}
+      <Field id="acc" label={method === 'zaincash' ? 'رقم هاتف زين كاش' : 'رقم حساب كي كارد'} hint="رقم الحساب فقط. لا تكتب رقم البطاقة كاملاً ولا الرمز السري ولا تاريخ الانتهاء ولا رمز التحقق.">
+        <input id="acc" inputMode="numeric" dir="ltr" value={no} onChange={(e) => setNo(e.target.value)} placeholder={method === 'zaincash' ? '07701234567' : ''} autoComplete="off" className={`${field} num text-start text-[18px]`} />
+      </Field>
+      <Field id="hold" label="اسم صاحب الحساب"><input id="hold" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} className={field} /></Field>
+      <Button variant="ink" type="submit" disabled={busy || bad || name.trim().length < 2}>{busy ? 'لحظة…' : label}</Button>
+    </form>
   )
 }

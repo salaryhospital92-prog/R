@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../lib/config'
 import { iqd, latin, num } from '../lib/format'
 import { Button, Notice, field } from '../ui'
-import { nav, priceFor, rpc, sb, storeUrl } from './sb'
+import { nav, priceFor, q, rpc, sb, storeUrl } from './sb'
+import { AccountForm, METHOD } from './Earnings'
 import { Wordmark } from './Panel'
 
 const PRESETS = [10, 20, 30, 50]
-const STEPS = ['اسم المتجر', 'ربحك', 'منتجاتك', 'الإرسال']
+const STEPS = ['اسم المتجر', 'ربحك', 'منتجاتك', 'حساب أرباحك', 'الإرسال']
 
-/** معالج الإنشاء: أربع شاشات، سؤال في كل واحدة. كل خطوة تُحفظ في القاعدة فيستأنف من حيث توقف. */
+/** معالج الإنشاء: خمس شاشات، سؤال في كل واحدة. كل خطوة تُحفظ في القاعدة فيستأنف من حيث توقف. */
 export default function Wizard({ me, reload }) {
   const store = me.store
   const [step, setStep] = useState(store ? 2 : 1)
@@ -23,6 +24,8 @@ export default function Wizard({ me, reload }) {
   const [editSlug, setEditSlug] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  const [acct, setAcct] = useState(undefined)          // حساب الاستلام الحالي، null إن لم يُضف
+  const [editAcct, setEditAcct] = useState(false)
 
   useEffect(() => {
     if (!store) return
@@ -32,6 +35,8 @@ export default function Wizard({ me, reload }) {
       setPicked((p) => p ?? new Set(s.map((x) => x.product_id)))
     }).catch(() => {})
   }, [store?.id])
+  const loadAcct = () => q(sb.from('reseller_payout_accounts').select('method,account_no,holder_name').eq('is_current', true).limit(1)).then((a) => setAcct(a[0] ?? null)).catch(() => setAcct(null))
+  useEffect(() => { if (store) loadAcct() }, [store?.id])
 
   const run = async (fn) => {
     setBusy(true); setErr(null)
@@ -64,12 +69,12 @@ export default function Wizard({ me, reload }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 pb-8 pt-6">
       <div className="flex items-center justify-between">
-        <Wordmark className="text-[24px]" />
+        <Wordmark size={44} />
         <button type="button" onClick={() => sb.auth.signOut()} className="min-h-11 rounded-2xl px-3 text-[13px] font-bold text-mute hover:bg-wash">خروج</button>
       </div>
-      <div className="mt-6" aria-label={`الخطوة ${step} من 4`}>
+      <div className="mt-6" aria-label={`الخطوة ${step} من ${STEPS.length}`}>
         <div className="flex gap-1.5">{STEPS.map((s, i) => <span key={s} className={`h-1 flex-1 rounded-full ${i < step ? 'bg-ink' : 'bg-line'}`} />)}</div>
-        <p className="eyebrow mt-3">الخطوة {step} من 4 · {STEPS[step - 1]}</p>
+        <p className="eyebrow mt-3">الخطوة {step} من {STEPS.length} · {STEPS[step - 1]}</p>
       </div>
       {err && <div className="mt-5"><Notice tone="bad">{err}</Notice></div>}
 
@@ -143,6 +148,30 @@ export default function Wizard({ me, reload }) {
 
       {step === 4 && (
         <div className="mt-6 flex flex-1 flex-col">
+          <h1 className="text-[28px] font-black leading-10">أين نحوّل أرباحك؟</h1>
+          <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">أضف حساب زين كاش أو كي كارد، ونحوّل لك أرباحك عليه مباشرة.</p>
+          <div className="mt-7">
+            {acct === undefined ? <div className="skeleton h-40 rounded-[24px]" />
+              : acct && !editAcct ? (
+                <div className="rounded-[24px] bg-card p-5 shadow-[var(--shadow-card)]">
+                  <p className="eyebrow">حسابك</p>
+                  <p className="mt-2 text-[17px] font-bold">{METHOD[acct.method]} · <span dir="ltr" className="num">••••{String(acct.account_no).slice(-4)}</span></p>
+                  <p className="text-[15px] text-ink-2">{acct.holder_name}</p>
+                  <button type="button" onClick={() => setEditAcct(true)} className="mt-2 min-h-11 text-[14px] font-bold underline decoration-line decoration-2 underline-offset-8">تغيير</button>
+                </div>
+              ) : <AccountForm cur={acct} holder={me.name} label="حفظ والمتابعة" onSaved={async () => { setEditAcct(false); await loadAcct(); setStep(5) }} />}
+          </div>
+          {acct && !editAcct ? (
+            <div className="mt-auto flex gap-3 pt-10">
+              <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(3)}>رجوع</Button>
+              <Button variant="ink" onClick={() => setStep(5)}>التالي</Button>
+            </div>
+          ) : <button type="button" onClick={() => setStep(3)} className="mt-4 min-h-12 text-[15px] font-bold text-mute">رجوع إلى المنتجات</button>}
+        </div>
+      )}
+
+      {step === 5 && (
+        <div className="mt-6 flex flex-1 flex-col">
           <h1 className="text-[28px] font-black leading-10">متجرك جاهز</h1>
           <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">راجعه ثم أرسله للموافقة. بعد الموافقة تشارك رابطك مع زبائنك.</p>
           <dl className="mt-7 divide-y hairline rounded-[24px] bg-card px-5 shadow-[var(--shadow-card)]">
@@ -160,11 +189,12 @@ export default function Wizard({ me, reload }) {
             </div>
             <div className="py-4"><dt className="eyebrow">ربحك</dt><dd className="mt-1 text-[18px] font-bold">{store.markup_value}٪ على كل منتج</dd></div>
             <div className="py-4"><dt className="eyebrow">المنتجات</dt><dd className="mt-1 text-[18px] font-bold">{num(picked?.size ?? 0)} منتجاً</dd></div>
+            <div className="py-4"><dt className="eyebrow">حساب الأرباح</dt><dd className="mt-1 text-[18px] font-bold">{acct ? <>{METHOD[acct.method]} · <span dir="ltr" className="num">••••{String(acct.account_no).slice(-4)}</span></> : 'لم يُضف'}</dd></div>
           </dl>
           <p className="mt-4 text-[13px] leading-6 text-mute">بعد الإرسال تضيف منتجاتك الخاصة إن أردت، ويراجعها فريقنا قبل ظهورها.</p>
           <div className="mt-auto flex gap-3 pt-10">
-            <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(3)}>رجوع</Button>
-            <Button disabled={busy} onClick={() => run(async () => { await rpc('reseller_submit_store'); nav('#/'); await reload() })}>{busy ? 'لحظة…' : 'أرسل للموافقة'}</Button>
+            <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(4)}>رجوع</Button>
+            <Button disabled={busy || !acct} onClick={() => run(async () => { await rpc('reseller_submit_store'); nav('#/'); await reload() })}>{busy ? 'لحظة…' : 'أرسل للموافقة'}</Button>
           </div>
         </div>
       )}

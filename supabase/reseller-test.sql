@@ -95,7 +95,7 @@ begin
 end $$;
 create function pg_temp.activate(p_key text) returns void language plpgsql as $$
 begin
-  perform pg_temp.as_('authenticated', pg_temp.f(p_key)); perform public.reseller_submit_store();
+  perform pg_temp.as_('authenticated', pg_temp.f(p_key)); perform public.reseller_save_payout_account('zaincash', '07700000001', 'صاحب المتجر'); perform public.reseller_submit_store();
   perform pg_temp.as_('authenticated', pg_temp.f('admin')); perform public.reseller_decide_store(pg_temp.f(p_key || '.store'), 'activate');
   perform pg_temp.out();
 end $$;
@@ -262,7 +262,8 @@ begin
   perform pg_temp.eq((select a.method from public.reseller_payouts x join public.reseller_payout_accounts a on a.id = x.account_id where x.id = pg_temp.open_payout('A')),
     'qicard', '3س وتغيير الحساب يعيد الطلب على الحساب الجديد');
 
-  -- بلا حساب لا ينشأ، وعند حفظه ينشأ
+  -- بلا حساب لا ينشأ، وعند حفظه ينشأ (متاجر ما قبل 024 قد تكون بلا حساب)
+  update public.reseller_payout_accounts set is_current = false where store_id = pg_temp.f('B.store');
   perform pg_temp.as_('authenticated', pg_temp.f('admin')); perform public.reseller_adjust(pg_temp.f('B.store'), 30000, 'تسوية'); perform pg_temp.out();
   perform pg_temp.want(pg_temp.open_payout('B') is null, '3ع بلا حساب استلام لا طلب تلقائياً');
   perform pg_temp.as_('authenticated', pg_temp.f('B'));
@@ -554,7 +555,7 @@ begin
   update public.app_settings set value = 'TOKEN' where key = 'telegram_bot_token';
   insert into public.app_settings (key, value) values ('telegram_bot_token', 'TOKEN') on conflict (key) do update set value = 'TOKEN';
   delete from net.http_request_queue;
-  perform pg_temp.as_('authenticated', pg_temp.f('C')); perform public.reseller_submit_store();
+  perform pg_temp.as_('authenticated', pg_temp.f('C')); perform public.reseller_save_payout_account('zaincash', '07700000001', 'صاحب المتجر'); perform public.reseller_submit_store();
   perform pg_temp.fails('select public.reseller_submit_store()', 'سابقاً', '9ط لا إرسال مرتين');
   perform pg_temp.fails('select public.reseller_save_store(''{"name":"اسم مبدَّل"}'')', 'قيد المراجعة', '9ي لا تبديل للاسم أثناء المراجعة');
   perform public.reseller_save_store('{"markup_value":2500}');
@@ -637,7 +638,7 @@ begin
   perform pg_temp.fails('select public.reseller_save_payout_account(''qicard'', ''4111111111111111'', ''اسم'')', 'رقم بطاقة', '10ج رقم البطاقة برسالة واضحة');
   perform public.reseller_save_payout_account('zaincash', '+964 770 123 4567', 'صاحب');
   perform public.reseller_save_payout_account('zaincash', '٠٧٧٠٧٦٥٤٣٢١', 'صاحب');
-  perform pg_temp.eq((select string_agg(account_no || is_current, ',' order by seq) from public.reseller_payout_accounts), '07701234567false,07707654321true', '10د التطبيع، والتغيير صفّ جديد والقديم باقٍ');
+  perform pg_temp.eq((select string_agg(account_no || is_current, ',' order by seq) from public.reseller_payout_accounts where account_no <> '07700000001'), '07701234567false,07707654321true', '10د التطبيع، والتغيير صفّ جديد والقديم باقٍ');
   perform pg_temp.out();
   perform pg_temp.fails(format('insert into public.reseller_payout_accounts (store_id, method, account_no, holder_name) values (%L, ''qicard'', ''4111111111111111'', ''اسم'')', pg_temp.f('F.store')), 'check', '10هـ والقيد يرفض البطاقة ولو من المالك');
   perform pg_temp.as_('authenticated', pg_temp.f('admin')); perform public.reseller_adjust(pg_temp.f('F.store'), 25000, 'رصيد'); perform pg_temp.out();
@@ -688,9 +689,9 @@ begin
     'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_own_orders:r reseller_own_products:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_secrets: reseller_stores:r reseller_telegram:',
     '11د منح authenticated كما في التصميم');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
-    'reseller_bot_webhook reseller_checkout reseller_create_order reseller_login_finish reseller_login_start reseller_phone_register reseller_store reseller_store_own reseller_store_products', '11هـ دوال anon');
+    'reseller_bot_webhook reseller_checkout reseller_create_order reseller_login_finish reseller_login_start reseller_phone_register reseller_showcase reseller_store reseller_store_own reseller_store_products', '11هـ دوال anon');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('authenticated', p.oid, 'execute')),
-    'reseller_adjust reseller_balance reseller_bot_webhook reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_checkout reseller_create_order reseller_decide_store reseller_login_finish reseller_login_seal reseller_login_start reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_own_decide reseller_own_delete reseller_own_image_count reseller_own_order_set reseller_own_save reseller_own_set_fee reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_phone_register reseller_pick_products reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_store reseller_store_own reseller_store_products reseller_submit_store reseller_suggestions reseller_telegram_code rifai_orders_net',
+    'reseller_adjust reseller_balance reseller_bot_webhook reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_checkout reseller_create_order reseller_decide_store reseller_login_finish reseller_login_seal reseller_login_start reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_own_decide reseller_own_delete reseller_own_image_count reseller_own_order_set reseller_own_save reseller_own_set_fee reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_phone_register reseller_pick_products reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_showcase reseller_store reseller_store_own reseller_store_products reseller_submit_store reseller_suggestions reseller_telegram_code rifai_orders_net',
     '11و دوال authenticated');
   perform pg_temp.want(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'reseller%' and p.prosecdef and not coalesce(p.proconfig::text ~ 'search_path', false)), '11ز كل دالة definer لها search_path');
 
@@ -968,6 +969,8 @@ begin
 
   -- الإرسال بعد البدء السريع، والتسرّب
   perform pg_temp.as_('authenticated', u);
+  perform pg_temp.fails('select public.reseller_submit_store()', 'زين كاش أو كي كارد', '14أي1 لا إرسال بلا حساب استلام');
+  perform public.reseller_save_payout_account('zaincash', '07700000001', 'صاحب المتجر'); 
   perform pg_temp.runs('select public.reseller_submit_store()', '14أي الإرسال للموافقة بعد البدء');
   perform pg_temp.want(not public.is_staff() and not public.is_supervisor() and not public.is_admin(), '14أص مستخدم تيليغرام الجديد ليس موظفاً ولا مشرفاً ولا مديراً');
   perform pg_temp.eq((select count(*) from public.reseller_category_list() where selected), (select count(*) from public.reseller_categories where store_id = sid), '14أف قائمة الأصناف المختارة');
@@ -1272,5 +1275,17 @@ begin
   perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''reseller-products'', %L)', pg_temp.f('B') || '/x.png'), 'row-level security', '17ح1 لا رفع في مجلد غيره');
   perform pg_temp.out();
   perform pg_temp.eq((select file_size_limit || array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'reseller-products'), '2097152image/png,image/jpeg,image/webp', '17ح2 حدود الحاوية');
+  -- واجهة رزق: القائمة اليدوية وحدها، بالترتيب، وبلا مخفي أو موقوف أو منى أو بلا صورة
+  update public.products set image_url = 'https://img.test/' || id where id in (pg_temp.f('P'), pg_temp.f('T'), pg_temp.f('H'), pg_temp.f('X'), pg_temp.f('M'));
+  update public.app_settings set value = '' where key = 'reseller_showcase';
+  perform pg_temp.as_('anon');
+  perform pg_temp.eq((select count(*) from public.reseller_showcase()), 0::bigint, '17ط1 القائمة الفارغة لا تعرض شيئاً');
+  perform pg_temp.out();
+  update public.app_settings set value = concat_ws(', ', pg_temp.f('T'), pg_temp.f('H'), pg_temp.f('X'), pg_temp.f('M'), pg_temp.f('K'), 'ليس-معرّفاً', pg_temp.f('P')) where key = 'reseller_showcase';
+  perform pg_temp.as_('anon');
+  perform pg_temp.eq((select string_agg(name, ',') from public.reseller_showcase()), 'منتج T,منتج P', '17ط2 المختارة وحدها وبترتيبها');
+  perform pg_temp.out();
+  update public.products set image_url = null where id in (pg_temp.f('P'), pg_temp.f('T'), pg_temp.f('H'), pg_temp.f('X'), pg_temp.f('M'));
+  update public.app_settings set value = '' where key = 'reseller_showcase';
   delete from public.reseller_own_orders;   -- لا يعيق فحوص لاحقة
 end $$;
