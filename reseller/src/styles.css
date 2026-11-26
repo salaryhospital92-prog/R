@@ -73,6 +73,12 @@
 .float { animation: float 5s ease-in-out infinite; }
 @keyframes glow { 50% { opacity: .55; transform: scale(1.08) } }
 .glow { animation: glow 9s ease-in-out infinite; }
+/* مشاهد التمرير: المحتوى المثبّت بارتفاع الشاشة الصغير (لا يقفز مع شريط عنوان iOS) */
+.pin { height: 100vh; height: 100svh; }
+.page-bar { transform: scaleX(var(--page-p, 0)); transform-origin: right; }
+.story-text { font-size: clamp(20px, 3.3svh, 27px); line-height: 1.75; }
+@keyframes nudge { 50% { transform: translateY(4px) } }
+.nudge { animation: nudge 1.4s ease-in-out infinite; }
 /* الظهور عند التمرير: لا يختفي شيء لمن يطفئ الحركة */
 @media (prefers-reduced-motion: no-preference) {
   .reveal { opacity: 0; transform: translateY(22px); transition: opacity .8s cubic-bezier(.2, .8, .2, 1), transform .8s cubic-bezier(.2, .8, .2, 1); transition-delay: var(--d, 0ms); }
