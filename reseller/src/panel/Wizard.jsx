@@ -32,8 +32,10 @@ export default function Wizard({ me, reload }) {
     Promise.all([rpc('reseller_catalog'), rpc('reseller_suggestions', { p_limit: 12 })]).then(([c, s]) => {
       const ok = c.filter((r) => r.base > 0)
       setRows(ok); setSuggested(s.map((x) => x.product_id))
-      setPicked((p) => p ?? new Set(s.map((x) => x.product_id)))
-    }).catch(() => {})
+      // من عاد لمعالج بدأه: اختياره المحفوظ (فيه منتج مخفي) يبقى، وإلا فالمقترحة
+      const saved = ok.some((r) => !r.is_visible) ? ok.filter((r) => r.is_visible).map((r) => r.product_id) : null
+      setPicked((p) => p ?? new Set(saved ?? s.map((x) => x.product_id)))
+    }).catch((e) => setErr(errText(e)))
   }, [store?.id])
   const loadAcct = () => q(sb.from('reseller_payout_accounts').select('method,account_no,holder_name').eq('is_current', true).limit(1)).then((a) => setAcct(a[0] ?? null)).catch(() => setAcct(null))
   useEffect(() => { if (store) loadAcct() }, [store?.id])
@@ -159,7 +161,10 @@ export default function Wizard({ me, reload }) {
                   <p className="text-[15px] text-ink-2">{acct.holder_name}</p>
                   <button type="button" onClick={() => setEditAcct(true)} className="mt-2 min-h-11 text-[14px] font-bold underline decoration-line decoration-2 underline-offset-8">تغيير</button>
                 </div>
-              ) : <AccountForm cur={acct} holder={me.name} label="حفظ والمتابعة" onSaved={async () => { setEditAcct(false); await loadAcct(); setStep(5) }} />}
+              ) : <>
+                <AccountForm cur={acct} holder={me.name} label="حفظ والمتابعة" onSaved={async () => { setEditAcct(false); await loadAcct(); setStep(5) }} />
+                {acct && <button type="button" onClick={() => setEditAcct(false)} className="mt-3 min-h-12 w-full text-[15px] font-bold text-mute">إلغاء والإبقاء على حسابي</button>}
+              </>}
           </div>
           {acct && !editAcct ? (
             <div className="mt-auto flex gap-3 pt-10">

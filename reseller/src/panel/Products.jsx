@@ -255,13 +255,18 @@ function OwnSheet({ o, onClose, onDone }) {
     e.preventDefault(); setBusy(true); setErr(null)
     try {
       await rpc('reseller_own_save', { p: { ...(o.id ? { id: o.id } : {}), name: f.name.trim(), price, description: f.description.trim(), image_path: img ?? '', is_available: f.is_available } })
+      if (o.image_path && o.image_path !== img) sb.storage.from('reseller-products').remove([o.image_path]).catch(() => {})   // الصورة القديمة لم تعد مستعملة
       onDone(o.id ? 'حُفظ المنتج' : 'أُرسل المنتج للمراجعة')
     } catch (x) { setErr(errText(x)) } finally { setBusy(false) }
   }
   const remove = async () => {
     if (!confirm('حذف هذا المنتج نهائياً؟')) return
     setBusy(true)
-    try { await rpc('reseller_own_delete', { p_id: o.id }); onDone('حُذف المنتج') } catch (x) { setErr(errText(x)); setBusy(false) }
+    try {
+      await rpc('reseller_own_delete', { p_id: o.id })
+      if (o.image_path) sb.storage.from('reseller-products').remove([o.image_path]).catch(() => {})
+      onDone('حُذف المنتج')
+    } catch (x) { setErr(errText(x)); setBusy(false) }
   }
   return (
     <Sheet title={o.id ? 'تعديل منتج خاص' : 'منتج خاص جديد'} onClose={onClose}>

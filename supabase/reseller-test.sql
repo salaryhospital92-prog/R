@@ -686,12 +686,12 @@ begin
       case when has_any_column_privilege('authenticated', c.oid, 'insert') then 'a' end, case when has_any_column_privilege('authenticated', c.oid, 'update') then 'w' end,
       case when has_table_privilege('authenticated', c.oid, 'delete') then 'd' end), ' ' order by c.relname)
      from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'),
-    'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_own_orders:r reseller_own_products:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_secrets: reseller_stores:r reseller_telegram:',
+    'reseller_audit:r reseller_categories:rad reseller_identities: reseller_ledger:r reseller_logins: reseller_order_items:r reseller_orders:r reseller_own_orders:r reseller_own_products:r reseller_payout_accounts:r reseller_payouts:r reseller_product_requests:raw reseller_products:rawd reseller_secrets: reseller_signup_attempts: reseller_stores:r reseller_telegram:',
     '11د منح authenticated كما في التصميم');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('anon', p.oid, 'execute')),
     'reseller_bot_webhook reseller_checkout reseller_create_order reseller_login_finish reseller_login_start reseller_phone_register reseller_showcase reseller_store reseller_store_own reseller_store_products', '11هـ دوال anon');
   perform pg_temp.eq((select string_agg(p.proname, ' ' order by p.proname) from pg_proc p where p.pronamespace = 'public'::regnamespace and (p.proname like 'reseller%' or p.proname in ('rifai_line', 'rifai_orders_net')) and has_function_privilege('authenticated', p.oid, 'execute')),
-    'reseller_adjust reseller_balance reseller_bot_webhook reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_checkout reseller_create_order reseller_decide_store reseller_login_finish reseller_login_seal reseller_login_start reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_own_decide reseller_own_delete reseller_own_image_count reseller_own_order_set reseller_own_save reseller_own_set_fee reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_phone_register reseller_pick_products reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_showcase reseller_store reseller_store_own reseller_store_products reseller_submit_store reseller_suggestions reseller_telegram_code rifai_orders_net',
+    'reseller_adjust reseller_balance reseller_bot_webhook reseller_can_edit reseller_cancel_payout reseller_catalog reseller_category_list reseller_checkout reseller_create_order reseller_decide_store reseller_login_finish reseller_login_seal reseller_login_start reseller_logo_count reseller_me reseller_my_orders reseller_my_store reseller_own_decide reseller_own_delete reseller_own_image_count reseller_own_image_in_use reseller_own_order_set reseller_own_save reseller_own_set_fee reseller_payout_paid reseller_payout_reject reseller_payout_reveal reseller_phone_register reseller_pick_products reseller_quick_start reseller_request_cancel reseller_request_payout reseller_save_payout_account reseller_save_store reseller_showcase reseller_store reseller_store_own reseller_store_products reseller_submit_store reseller_suggestions reseller_telegram_code rifai_orders_net',
     '11و دوال authenticated');
   perform pg_temp.want(not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'reseller%' and p.prosecdef and not coalesce(p.proconfig::text ~ 'search_path', false)), '11ز كل دالة definer لها search_path');
 
@@ -704,7 +704,7 @@ begin
 
   -- ج) الصفوف التي يراها كل طرف ولا تخصّه
   for t in select c.relname from pg_class c where c.relnamespace = 'public'::regnamespace and c.relname like 'reseller%' and c.relkind = 'r'
-            and c.relname not in ('reseller_identities', 'reseller_logins', 'reseller_secrets', 'reseller_own_products', 'reseller_own_orders') order by 1 loop   -- بلا متجر: يغطيها 14 و15
+            and c.relname not in ('reseller_identities', 'reseller_logins', 'reseller_secrets', 'reseller_own_products', 'reseller_own_orders', 'reseller_signup_attempts') order by 1 loop   -- بلا متجر: يغطيها 14 و15
     foreach s in array array['A', 'B', 'N', 'mona', 'sup', 'admin'] loop
       execute format('select count(*) from public.%I x where %s', t.relname, case t.relname when 'reseller_stores' then format('owner_id is distinct from %L', pg_temp.f(s))
         when 'reseller_order_items' then format('not exists (select 1 from public.reseller_orders o where o.order_id = x.order_id and o.store_id = %L)', pg_temp.f(s || '.store'))
@@ -1107,7 +1107,7 @@ create function pg_temp.cb(p_tg bigint, p_data text) returns jsonb language sql 
     'message', jsonb_build_object('chat', jsonb_build_object('type', 'private')), 'data', p_data))) $$;
 do $$
 declare r jsonb; v uuid; u uuid; op uuid; op2 uuid; sa uuid := pg_temp.f('A.store'); zone int := (select id from public.delivery_zones where name = 'منطقة فحص زاد');
-        n_orders bigint; n_own bigint; bal jsonb;
+        n_orders bigint; n_own bigint; bal jsonb; ns uuid;
 begin
   perform pg_temp.out();
   perform pg_temp.cfg('reseller_orders_enabled', 'on');
@@ -1117,7 +1117,7 @@ begin
   perform pg_temp.as_('anon');
   r := public.reseller_phone_register('0770 111 2299', 'secret-pass-1', 'سعد');
   perform pg_temp.eq(r->>'email', 'ph9647701112299@phone.invalid', '17أ1 التسجيل يعيد البريد التركيبي');
-  perform pg_temp.fails('select public.reseller_phone_register(''07701112299'', ''another-pass'', ''غيره'')', 'مسجَّل', '17أ2 الرقم لا يُسجَّل مرتين');
+  perform pg_temp.eq(public.reseller_phone_register('07701112299', 'another-pass', 'غيره')->>'status', 'exists', '17أ2 الرقم لا يُسجَّل مرتين');
   perform pg_temp.fails('select public.reseller_phone_register(''07701112288'', ''short'', ''اسم'')', '8 أحرف', '17أ3 كلمة سر قصيرة');
   perform pg_temp.fails('select public.reseller_phone_register(''12345'', ''secret-pass-1'', ''اسم'')', 'رقم موبايل', '17أ4 رقم غير عراقي');
   perform pg_temp.fails('select public.reseller_phone_register(''07701112277'', ''secret-pass-1'', ''x'')', 'اسمك', '17أ5 الاسم مطلوب');
@@ -1132,7 +1132,16 @@ begin
   perform pg_temp.runs('select public.reseller_quick_start(''متجر سعد'')', '17أ10 مستخدم الهاتف يبدأ متجره');
   perform pg_temp.eq(public.reseller_me()->>'phone', '07701112299', '17أ11 الهاتف في الملف');
   perform pg_temp.out();
-  perform pg_temp.fails('select public.reseller_phone_register(''07701112233'', ''secret-pass-1'', ''اسم'')', 'مسجَّل', '17أ12 رقم مسجَّل بتيليغرام لا يُسجَّل بكلمة سر');
+  perform pg_temp.as_('anon');
+  perform pg_temp.eq(public.reseller_phone_register('07701112233', 'secret-pass-1', 'اسم')->>'status', 'exists', '17أ12 رقم مسجَّل بتيليغرام لا يُسجَّل بكلمة سر');
+  -- حدّ لكل عنوان: عشر محاولات في الساعة (الناجحة والمكررة)، ولا يحجب غيره
+  perform set_config('request.headers', '{"x-forwarded-for": "203.0.113.7, 10.0.0.1"}', true);
+  for i in 1..10 loop perform public.reseller_phone_register('07701112299', 'another-pass', 'غيره'); end loop;
+  perform pg_temp.fails('select public.reseller_phone_register(''07701112266'', ''secret-pass-1'', ''اسم'')', 'محاولات كثيرة', '17أ13 الفحص المتكرر من عنوان واحد يتوقف');
+  perform set_config('request.headers', '{"x-forwarded-for": "198.51.100.9"}', true);
+  perform pg_temp.eq(public.reseller_phone_register('07701112266', 'secret-pass-1', 'اسم')->>'status', 'created', '17أ14 وعنوان آخر يسجّل');
+  perform set_config('request.headers', '{}', true);
+  perform pg_temp.out();
 
   -- ب) اختيار المنتجات والمقترحة
   perform pg_temp.as_('authenticated', pg_temp.f('A'));
@@ -1150,6 +1159,8 @@ begin
 
   -- ج) المنتج الخاص: حفظ ← بانتظار ← لا يظهر
   perform pg_temp.as_('authenticated', pg_temp.f('A'));
+  perform pg_temp.fails(format('select public.reseller_own_save(%L)', jsonb_build_object('name', 'شمعة', 'price', 6000, 'image_path', pg_temp.f('A') || '/candle.png')), 'ارفع الصورة', '17ج0 صورة لم تُرفع لا تُحفظ');
+  insert into storage.objects (bucket_id, name) values ('reseller-products', pg_temp.f('A') || '/candle.png');
   op := public.reseller_own_save(jsonb_build_object('name', 'شمعة معطّرة', 'price', 6000, 'image_path', pg_temp.f('A') || '/candle.png'));
   perform pg_temp.fails(format('select public.reseller_own_save(%L)', jsonb_build_object('name', 'x', 'price', 6000)), 'اسم المنتج', '17ج1 الاسم قصير');
   perform pg_temp.fails(format('select public.reseller_own_save(%L)', jsonb_build_object('name', 'منتج', 'price', 100)), 'السعر', '17ج2 سعر غير صالح');
@@ -1169,16 +1180,17 @@ begin
   -- د) أزرار المديرين في بوت رزق
   perform set_config('request.headers', '{"x-telegram-bot-api-secret-token": "hook-secret"}', true);
   perform pg_temp.as_('anon');
-  r := pg_temp.cb(903, 'opok:' || op);
+  r := pg_temp.cb(903, 'opok:' || op || ':1');
   perform pg_temp.want(r->>'text' like '%لمدير الرفاعي فقط%', '17د1 غير المدير لا يقبل');
-  r := pg_temp.cb(902, 'opok:' || op);
+  r := pg_temp.cb(902, 'opok:' || op || ':1');
   perform pg_temp.want(r->>'text' like '%لمدير الرفاعي فقط%', '17د2 ولا المدير الموقوف');
   perform pg_temp.out();
   perform pg_temp.eq((select status from public.reseller_own_products where id = op), 'pending', '17د3 بقي بانتظار');
   perform pg_temp.as_('anon');
-  r := pg_temp.cb(901, 'opok:' || op);
+  perform pg_temp.eq(pg_temp.cb(901, 'opok:' || op), '{}'::jsonb, '17د3أ زر بلا نسخة لا يُقبل');
+  r := pg_temp.cb(901, 'opok:' || op || ':1');
   perform pg_temp.want(r->>'text' like '%قُبل المنتج%', '17د4 المدير يقبل بزر');
-  r := pg_temp.cb(901, 'opno:' || op);
+  r := pg_temp.cb(901, 'opno:' || op || ':1');
   perform pg_temp.want(r->>'text' like '%عولج سابقاً%', '17د5 الضغطة الثانية لا تغيّر شيئاً');
   perform pg_temp.want(coalesce(current_setting('request.jwt.claims', true), '') = '', '17د6 صلاحية مفتاح الخدمة لا تبقى بعد الزر');
   perform pg_temp.out();
@@ -1191,7 +1203,7 @@ begin
   perform pg_temp.eq((select status from public.reseller_stores where id = pg_temp.f('F.store')), 'active', '17د9 المتجر فعّال');
   perform set_config('request.headers', '{}', true);
   perform pg_temp.as_('anon');
-  perform pg_temp.eq(pg_temp.cb(901, 'opno:' || op), '{}'::jsonb, '17د10 بلا سر الويبهوك لا زر');
+  perform pg_temp.eq(pg_temp.cb(901, 'opno:' || op || ':1'), '{}'::jsonb, '17د10 بلا سر الويبهوك لا زر');
   perform pg_temp.out();
 
   -- هـ) التعديل يعيده للمراجعة، والإتاحة وحدها لا
@@ -1214,7 +1226,14 @@ begin
   perform pg_temp.as_('anon');
   perform pg_temp.eq(jsonb_array_length(public.reseller_store_own('store-a')->'products'), 0, '17هـ5 ويختفي حتى يُقبل');
   perform set_config('request.headers', '{"x-telegram-bot-api-secret-token": "hook-secret"}', true);
-  perform pg_temp.cb(901, 'opok:' || op);
+  r := pg_temp.cb(901, 'opok:' || op || ':1');
+  perform pg_temp.want(r->>'text' like '%عُدّل المنتج بعد هذه الرسالة%', '17هـ6 زر رسالة قديمة لا يقبل نسخة لم يرها المدير');
+  perform pg_temp.out();
+  perform pg_temp.eq((select status || version from public.reseller_own_products where id = op), 'pending2', '17هـ7 بقي بانتظار بنسخة جديدة');
+  perform set_config('request.headers', '{"x-telegram-bot-api-secret-token": "hook-secret"}', true);
+  perform pg_temp.as_('anon');
+  r := pg_temp.cb(901, 'opok:' || op || ':2');
+  perform pg_temp.want(r->>'text' like '%قُبل المنتج%', '17هـ8 وزر الرسالة الأحدث يقبل');
   perform set_config('request.headers', '{}', true);
   perform pg_temp.as_('anon');
 
@@ -1271,8 +1290,18 @@ begin
 
   -- ح) صور المنتجات: مجلده وحده
   perform pg_temp.as_('authenticated', pg_temp.f('A'));
-  insert into storage.objects (bucket_id, name) values ('reseller-products', pg_temp.f('A') || '/candle.png');
+  insert into storage.objects (bucket_id, name) values ('reseller-products', pg_temp.f('A') || '/spare.png');
   perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''reseller-products'', %L)', pg_temp.f('B') || '/x.png'), 'row-level security', '17ح1 لا رفع في مجلد غيره');
+  update storage.objects set name = pg_temp.f('A') || '/swapped.png' where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/candle.png';
+  delete from storage.objects where bucket_id = 'reseller-products' and name in (pg_temp.f('A') || '/candle.png', pg_temp.f('A') || '/spare.png');
+  perform pg_temp.out();
+  perform pg_temp.want(not exists (select 1 from storage.objects where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/swapped.png'), '17ح3 لا تعديل لملف صورة');
+  perform pg_temp.want(exists (select 1 from storage.objects where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/candle.png'), '17ح4 صورة منتج قائم لا تُحذف');
+  perform pg_temp.want(not exists (select 1 from storage.objects where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/spare.png'), '17ح5 والصورة غير المستعملة تُحذف');
+  ns := pg_temp.mk_user('NS');
+  perform pg_temp.as_('authenticated', ns);
+  perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''reseller-products'', %L)', ns || '/x.png'), 'row-level security', '17ح6 لا رفع بلا متجر');
+  perform pg_temp.as_('authenticated', pg_temp.f('A'));
   perform pg_temp.out();
   perform pg_temp.eq((select file_size_limit || array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'reseller-products'), '2097152image/png,image/jpeg,image/webp', '17ح2 حدود الحاوية');
   -- واجهة رزق: القائمة اليدوية وحدها، بالترتيب، وبلا مخفي أو موقوف أو منى أو بلا صورة

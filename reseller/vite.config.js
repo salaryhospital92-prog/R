@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +13,9 @@ const AUTH = process.env.DEV_AUTH ?? 'http://127.0.0.1:3102'      // GoTrue ال
 const ASSETS = fileURLToPath(new URL('./dev/assets', import.meta.url))
 const SECRETS = fileURLToPath(new URL('./dev/.secrets.json', import.meta.url))
 const TYPES = { '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' }
+// SQL على قاعدة التجربة (معاملة واحدة)
+const DB_SQL = (sql) => spawnSync('docker', ['exec', '-i', '-e', 'PGPASSWORD=local', 'reseller-dev-db', 'psql', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'postgres',
+  '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', '-1', '-f', '-'], { input: sql, encoding: 'utf8' })
 const body = (req) => new Promise((ok) => { const c = []; req.on('data', (d) => c.push(d)); req.on('end', () => ok(Buffer.concat(c))) })
 
 // =====================================================================
@@ -49,6 +53,15 @@ const devOnly = () => ({
         if (up && ['POST', 'PUT'].includes(req.method)) {
           const file = normalize(join(ASSETS, up[1] === 'reseller-products' ? 'products' : '', decodeURIComponent(up[2])))
           if (!file.startsWith(normalize(ASSETS))) return next()
+          if (up[1] === 'reseller-products') {
+            // كما في Supabase: يُسجَّل الملف في storage.objects باسم المستخدم فتسري سياسات الحاوية (متجر، مجلده، 100 ملف)
+            const name = decodeURIComponent(up[2])
+            const sub = JSON.parse(Buffer.from((req.headers.authorization ?? '').split('.')[1] ?? '', 'base64url').toString() || '{}').sub
+            if (!/^[0-9a-f-]{36}$/.test(sub ?? '') || !/^[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,80}$/.test(name)) { res.statusCode = 400; return res.end('{"error":"bad path"}') }
+            const r = DB_SQL(`set local role authenticated; select set_config('request.jwt.claims', '{"sub":"${sub}","role":"authenticated"}', true);
+              insert into storage.objects (bucket_id, name) values ('reseller-products', '${name}');`)
+            if (r.status !== 0) { res.statusCode = 403; res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ error: 'Unauthorized', message: r.stderr.split('\n')[0] })) }
+          }
           mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, await body(req))
           res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ Key: `${up[1]}/${up[2]}` }))
         }

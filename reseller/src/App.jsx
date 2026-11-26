@@ -43,7 +43,10 @@ export default function App() {
       const [main, own] = await Promise.all([getProducts(slug), getOwn(slug).catch(() => null)])
       const products = [...(own?.products ?? []).map(asProduct), ...main]
       store.own_fee = own?.delivery_fee ?? 0
-      const r = reconcile(linesRef.current, products)
+      // إن تعذّر جلب منتجات المتجر الخاصة مؤقتاً لا تُحذف من سلة الزبون: تُترك كما هي حتى تعود
+      const known = own ? null : new Set(main.map((p) => p.id))
+      const r = reconcile(known ? linesRef.current.filter((l) => known.has(l.id)) : linesRef.current, products)
+      if (known) r.lines = [...r.lines, ...linesRef.current.filter((l) => !known.has(l.id))]
       if (JSON.stringify(r.lines) !== JSON.stringify(linesRef.current)) cart.commit(r.lines)
       if (r.notes.length) setNotes(r.notes)
       setData({ status: 'ready', store, products })

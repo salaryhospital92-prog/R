@@ -16,22 +16,39 @@ alter table public.reseller_identities add primary key (user_id);
 alter table public.reseller_identities alter column telegram_id drop not null;
 alter table public.reseller_identities add constraint reseller_identities_telegram_key unique (telegram_id);
 
+-- محاولات التسجيل بالهاتف (ناجحة وفاشلة) لحدّ لكل عنوان: لا يحجب مهاجمٌ واحد التسجيل عن الجميع، ولا يفحص الأرقام بلا حد
+create table public.reseller_signup_attempts (
+  id bigint generated always as identity primary key,
+  ip text not null,
+  at timestamptz not null default now()
+);
+create index on public.reseller_signup_attempts (ip, at desc);
+alter table public.reseller_signup_attempts enable row level security;
+revoke all on public.reseller_signup_attempts from public, anon, authenticated, service_role;
+
 -- تسجيل بالهاتف وكلمة سر (يدخل بعدها signInWithPassword ببريد تركيبي ph<الهاتف>@phone.invalid).
 -- الرقم لا يُتحقق منه آلياً: يتصل به مدير الرفاعي قبل تفعيل المتجر.
+-- الرقم المسجَّل سابقاً يُرَدّ {status: exists} لا خطأً، فتبقى المحاولة محسوبة على صاحبها.
 create or replace function public.reseller_phone_register(p_phone text, p_password text, p_name text) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare v_phone text := public.zad_canonical_phone(p_phone); v_user uuid := gen_random_uuid(); v_email text;
+        v_ip text := coalesce(nullif(trim(split_part(coalesce(nullif(current_setting('request.headers', true), ''), '{}')::jsonb->>'x-forwarded-for', ',', 1)), ''), 'unknown');
 begin
   if v_phone is null or v_phone !~ '^9647\d{9}$' then raise exception 'أدخل رقم موبايل عراقي صحيح'; end if;
   if length(coalesce(p_password, '')) not between 8 and 72 then raise exception 'كلمة السر من 8 أحرف على الأقل'; end if;
   if length(trim(coalesce(p_name, ''))) not between 2 and 80 then raise exception 'اكتب اسمك'; end if;
   perform pg_advisory_xact_lock(hashtext('reseller_phone_register'));
-  if (select count(*) from auth.users where raw_app_meta_data ? 'reseller_phone' and created_at > now() - interval '1 hour') >= 30 then
+  if (select count(*) from public.reseller_signup_attempts where ip = v_ip and at > now() - interval '1 hour') >= 10 then
+    raise exception 'محاولات كثيرة من هذا الجهاز — حاول بعد ساعة';
+  end if;
+  if (select count(*) from auth.users where raw_app_meta_data ? 'reseller_phone' and created_at > now() - interval '1 hour') >= 300 then
     raise exception 'تسجيلات كثيرة الآن — حاول بعد قليل';
   end if;
+  delete from public.reseller_signup_attempts where at < now() - interval '1 day';
+  insert into public.reseller_signup_attempts (ip) values (v_ip);
   v_email := 'ph' || v_phone || '@phone.invalid';
   if exists (select 1 from public.reseller_identities where phone = v_phone) or exists (select 1 from auth.users where email = v_email) then
-    raise exception 'هذا الرقم مسجَّل — ادخل بكلمة السر أو بتيليغرام';
+    return jsonb_build_object('status', 'exists');
   end if;
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
                           raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
@@ -43,7 +60,7 @@ begin
   insert into auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
   values (v_user::text, v_user, jsonb_build_object('sub', v_user::text, 'email', v_email, 'email_verified', true), 'email', now(), now());
   insert into public.reseller_identities (telegram_id, user_id, name, phone, last_login_at) values (null, v_user, left(trim(p_name), 80), v_phone, now());
-  return jsonb_build_object('email', v_email);
+  return jsonb_build_object('status', 'created', 'email', v_email);
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -92,6 +109,7 @@ create table public.reseller_own_products (
   reason       text check (length(reason) <= 300),
   decided_by   text,
   decided_at   timestamptz,
+  version      int not null default 1,          -- يزيد مع كل تغيير في المحتوى؛ زر الموافقة مربوط به
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
@@ -136,16 +154,20 @@ language sql stable security definer set search_path = public, storage as $$
   select count(*)::int from storage.objects
    where bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text
 $$;
+-- صورة يستعملها منتج خاص لا تُحذف ولا تُستبدل: كل صورة جديدة ملف جديد، فلا تتغيّر صورة منتج مقبول دون مراجعة
+create or replace function public.reseller_own_image_in_use(p_name text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.reseller_own_products where image_path = p_name)
+$$;
 create policy reseller_products_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text
+              and (select public.reseller_my_store()) is not null
               and (select public.reseller_own_image_count()) < 100);
-create policy reseller_products_update on storage.objects for update to authenticated
-  using (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text)
-  with check (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy reseller_products_read on storage.objects for select to authenticated
   using (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy reseller_products_delete on storage.objects for delete to authenticated
-  using (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text);
+  using (bucket_id = 'reseller-products' and (storage.foldername(name))[1] = auth.uid()::text
+         and not public.reseller_own_image_in_use(name));
 
 -- ---------------------------------------------------------------------
 -- 4) بوت رزق: الإرسال وإشعارات الإدارة
@@ -221,6 +243,11 @@ begin
   if v_img is not null and v_img !~ ('^' || auth.uid() || '/[A-Za-z0-9._-]{1,80}\.(png|jpe?g|webp)$') then
     raise exception 'مسار الصورة غير صالح';
   end if;
+  -- الصورة مرفوعة فعلاً (فلا يُقبل «بلا صورة» ثم تُرفع صورة بعد القبول)
+  if v_img is not null and v_img is distinct from o.image_path
+     and not exists (select 1 from storage.objects where bucket_id = 'reseller-products' and name = v_img) then
+    raise exception 'ارفع الصورة أولاً';
+  end if;
   if v_name is null or length(v_name) not between 2 and 120 then raise exception 'اسم المنتج من حرفين إلى 120'; end if;
   if v_price is null or v_price not between 250 and 100000000 then raise exception 'السعر غير صالح'; end if;
 
@@ -231,7 +258,7 @@ begin
     values (s.id, v_name, v_desc, v_price, v_img, v_avail) returning * into o;
   else
     update public.reseller_own_products set name = v_name, description = v_desc, price = v_price, image_path = v_img,
-           is_available = v_avail, updated_at = now(),
+           is_available = v_avail, updated_at = now(), version = version + case when v_changed then 1 else 0 end,
            status = case when v_changed then 'pending' else status end, reason = case when v_changed then null else reason end
      where id = o.id returning * into o;
   end if;
@@ -239,8 +266,8 @@ begin
     perform public.reseller_notify_admins('🆕 منتج خاص بانتظار المراجعة' || E'\nالمتجر: ' || s.name || E'\nالمنتج: ' || v_name
         || E'\nالسعر: ' || v_price || ' د.ع' || coalesce(E'\nالصورة: ' || v_img, E'\nبلا صورة'),
       jsonb_build_array(jsonb_build_array(
-        jsonb_build_object('text', '✅ قبول', 'callback_data', 'opok:' || o.id),
-        jsonb_build_object('text', '✖️ رفض',  'callback_data', 'opno:' || o.id))));
+        jsonb_build_object('text', '✅ قبول', 'callback_data', 'opok:' || o.id || ':' || o.version),
+        jsonb_build_object('text', '✖️ رفض',  'callback_data', 'opno:' || o.id || ':' || o.version))));
   end if;
   return o.id;
 end $$;
@@ -262,7 +289,8 @@ begin
 end $$;
 
 -- قرار الإدارة (لوحة الويب أو زر البوت). من «بانتظار» فقط: الضغطة الثانية لا تجد ما تقرره.
-create or replace function public.reseller_own_decide(p_id uuid, p_action text, p_reason text default null, p_telegram_id bigint default null) returns text
+-- p_version: النسخة التي رآها المدير. تعديلٌ بعد الرسالة يُبطل أزرارها (الرسالة الأحدث تحمل النسخة الجديدة).
+create or replace function public.reseller_own_decide(p_id uuid, p_action text, p_reason text default null, p_telegram_id bigint default null, p_version int default null) returns text
 language plpgsql security definer set search_path = public as $$
 declare v_actor text := public.reseller_actor(p_telegram_id); o public.reseller_own_products; v_to text;
 begin
@@ -270,8 +298,13 @@ begin
   if v_to is null then raise exception 'إجراء غير معروف'; end if;
   if v_to = 'rejected' and length(trim(coalesce(p_reason, ''))) < 2 then raise exception 'اكتب السبب'; end if;
   update public.reseller_own_products set status = v_to, reason = left(trim(p_reason), 300), decided_by = v_actor, decided_at = now()
-   where id = p_id and status = 'pending' returning * into o;
-  if o.id is null then raise exception 'عولج سابقاً'; end if;
+   where id = p_id and status = 'pending' and (p_version is null or version = p_version) returning * into o;
+  if o.id is null then
+    if exists (select 1 from public.reseller_own_products where id = p_id and status = 'pending') then
+      raise exception 'عُدّل المنتج بعد هذه الرسالة — راجع الرسالة الأحدث';
+    end if;
+    raise exception 'عولج سابقاً';
+  end if;
   insert into public.reseller_audit (store_id, actor, action, detail) values (o.store_id, v_actor, 'own_' || p_action, o.name);
   perform public.reseller_notify_owner(o.store_id, case v_to when 'approved' then '✅ قُبل منتجك «' || o.name || '» وصار يظهر في متجرك.'
                                                             else '✖️ لم يُقبل منتجك «' || o.name || '»: ' || coalesce(o.reason, '') end);
@@ -397,7 +430,8 @@ begin
     end;
 
     -- أزرار المديرين: المتجر (rsok/rsno) والمنتج الخاص (opok/opno). reseller_actor يتحقق من المدير بنفسه.
-    if coalesce(cbq->>'data', '') ~ '^(rsok|rsno|opok|opno):[0-9a-f-]{36}$' then
+    -- أزرار المنتج تحمل النسخة: opok:<id>:<version>
+    if coalesce(cbq->>'data', '') ~ '^((rsok|rsno):[0-9a-f-]{36}|(opok|opno):[0-9a-f-]{36}:\d{1,9})$' then
       if not v_admin then
         return jsonb_build_object('method', 'sendMessage', 'chat_id', v_tg, 'text', 'هذه العملية لمدير الرفاعي فقط');
       end if;
@@ -408,8 +442,8 @@ begin
         v_text := case v_kind
           when 'rsok' then case public.reseller_decide_store(v_id, 'activate', null, v_tg) when 'active' then '✅ فُعّل المتجر' end
           when 'rsno' then case public.reseller_decide_store(v_id, 'reject', 'رفضته الإدارة', v_tg) when 'rejected' then '✖️ رُفض المتجر' end
-          when 'opok' then case public.reseller_own_decide(v_id, 'approve', null, v_tg) when 'approved' then '✅ قُبل المنتج' end
-          when 'opno' then case public.reseller_own_decide(v_id, 'reject', 'رفضته الإدارة', v_tg) when 'rejected' then '✖️ رُفض المنتج' end
+          when 'opok' then case public.reseller_own_decide(v_id, 'approve', null, v_tg, split_part(cbq->>'data', ':', 3)::int) when 'approved' then '✅ قُبل المنتج' end
+          when 'opno' then case public.reseller_own_decide(v_id, 'reject', 'رفضته الإدارة', v_tg, split_part(cbq->>'data', ':', 3)::int) when 'rejected' then '✖️ رُفض المنتج' end
         end;
       exception when others then v_text := sqlerrm;
       end;
@@ -506,14 +540,14 @@ end $$;
 revoke all on function public.reseller_phone_register(text, text, text), public.reseller_pick_products(uuid[]),
   public.reseller_suggestions(int), public.reseller_own_image_count(), public.reseller_razq_send(bigint, text, jsonb),
   public.reseller_notify_owner(uuid, text), public.reseller_own_save(jsonb), public.reseller_own_delete(uuid),
-  public.reseller_own_set_fee(bigint), public.reseller_own_decide(uuid, text, text, bigint), public.reseller_store_own(text),
+  public.reseller_own_set_fee(bigint), public.reseller_own_decide(uuid, text, text, bigint, int), public.reseller_store_own(text),
   public.reseller_checkout(text, text, text, jsonb, jsonb, int, text, bigint, bigint), public.reseller_own_order_set(uuid, text),
-  public.reseller_showcase()
+  public.reseller_showcase(), public.reseller_own_image_in_use(text)
   from public, anon, authenticated, service_role;
 revoke all on function public.reseller_notify_admins(text, jsonb), public.reseller_bot_webhook(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.reseller_bot_webhook(jsonb) to anon, authenticated;
 grant execute on function public.reseller_phone_register(text, text, text), public.reseller_store_own(text), public.reseller_showcase(),
   public.reseller_checkout(text, text, text, jsonb, jsonb, int, text, bigint, bigint) to anon, authenticated;
-grant execute on function public.reseller_pick_products(uuid[]), public.reseller_suggestions(int), public.reseller_own_image_count(),
+grant execute on function public.reseller_pick_products(uuid[]), public.reseller_suggestions(int), public.reseller_own_image_count(), public.reseller_own_image_in_use(text),
   public.reseller_own_save(jsonb), public.reseller_own_delete(uuid), public.reseller_own_set_fee(bigint),
-  public.reseller_own_decide(uuid, text, text, bigint), public.reseller_own_order_set(uuid, text) to authenticated;
+  public.reseller_own_decide(uuid, text, text, bigint, int), public.reseller_own_order_set(uuid, text) to authenticated;

@@ -168,7 +168,7 @@ export default function Login() {
           <div className="mt-6 grid grid-cols-2 rounded-2xl bg-wash p-1" role="tablist" aria-label="طريقة الدخول">
             {[['phone', 'رقم الهاتف'], ['telegram', 'تيليغرام']].map(([k, label]) => {
               const on = (entry === 'telegram') === (k === 'telegram')
-              return <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setEntry(k === 'telegram' ? 'telegram' : 'new')}
+              return <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setEntry(k === 'telegram' ? 'telegram' : entry === 'telegram' ? 'new' : entry)}
                 className={`min-h-12 rounded-xl text-[15px] transition ${on ? 'bg-card font-bold text-ink shadow-[var(--shadow-card)]' : 'font-medium text-mute'}`}>{label}</button>
             })}
           </div>
@@ -195,7 +195,10 @@ function PhoneLogin({ initial = 'new' }) {
     if (mode === 'new' && f.name.trim().length < 2) return setErr('اكتب اسمك')
     setBusy(true); setErr(null)
     try {
-      if (mode === 'new') await rpc('reseller_phone_register', { p_phone: phone, p_password: f.password, p_name: f.name.trim() })
+      if (mode === 'new') {
+        const r = await rpc('reseller_phone_register', { p_phone: phone, p_password: f.password, p_name: f.name.trim() })
+        if (r?.status === 'exists') { setMode('in'); return setErr('هذا الرقم مسجَّل. ادخل بكلمة السر، أو بتيليغرام إن كان مربوطاً.') }
+      }
       const { error } = await sb.auth.signInWithPassword({ email: phoneEmail(phone), password: f.password })
       if (error) throw Object.assign(new Error(/invalid/i.test(error.message) ? 'رقم الهاتف أو كلمة السر غير صحيحة' : 'تعذّر الدخول، حاول مرة أخرى'), { code: 'P0001' })
     } catch (x) { setErr(errText(x)) } finally { setBusy(false) }
