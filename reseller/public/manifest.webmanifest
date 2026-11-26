@@ -1,0 +1,17 @@
+{
+  "name": "رزق — متجرك من هاتفك",
+  "short_name": "رزق",
+  "description": "متجر إلكتروني باسمك ببضاعة جاهزة، وأرباحك إلى زين كاش أو كي كارد.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f6f1",
+  "theme_color": "#f8f6f1",
+  "icons": [
+    { "src": "/razq-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/razq-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/razq-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

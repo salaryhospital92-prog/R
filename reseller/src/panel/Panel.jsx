@@ -11,6 +11,7 @@ import Products from './Products'
 import Orders from './Orders'
 import Earnings from './Earnings'
 import More from './More'
+import InstallApp from './InstallApp'
 
 // تنقّل بالهاش: لا يحتاج إعداد خادم
 const subs = new Set()
@@ -55,7 +56,7 @@ export default function Panel() {
 
   const store = me?.store
   if (auth === 'loading' || (auth === 'in' && me === undefined && !err)) return <div className="grid min-h-dvh place-items-center"><Wordmark size={72} className="animate-pulse" /></div>
-  if (auth === 'out') return <Login />
+  if (auth === 'out') return <><Login /><InstallApp className="bottom-4 safe-b" /></>
   if (err) return <StateScreen title="تعذّر التحميل" text={err} action={<Button variant="ink" onClick={reload}>إعادة المحاولة</Button>} />
   if (!me) return <StateScreen title="هذا الحساب ليس حساب متجر" text="ادخل برقم هاتفك أو بحساب تيليغرام الخاص بك." action={<Button variant="ink" onClick={() => sb.auth.signOut()}>خروج</Button>} />
   if (!store || store.status === 'draft') return <Wizard me={me} reload={reload} />
@@ -86,6 +87,7 @@ export default function Panel() {
           {toast.action && <button type="button" className="min-h-10 rounded-xl px-3 font-bold text-[#f3d27a]" onClick={() => { toast.action.run(); setToast(null) }}>{toast.action.label}</button>}
         </div></div>
       )}
+      <InstallApp className="bottom-24" />
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t hairline bg-card/95 backdrop-blur safe-b" aria-label="التنقل">
         <ul className="mx-auto flex max-w-2xl px-2 pt-1.5">
           {TABS.map(([id, label, Icon]) => (
