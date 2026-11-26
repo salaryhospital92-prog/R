@@ -130,5 +130,8 @@ select s.id, v.n, v.d, v.p, v.i, v.st from public.reseller_stores s, (values
   ('صابون بالعسل والشوفان', 'قطعة 120 غرام، مصنوعة يدوياً.', 3500, '${OWNER}/own2.svg', 'approved'),
   ('مبخرة خشبية', null, 15000, null, 'pending')) v(n, d, p, i, st)
  where s.slug = 'noor-store';
+-- كما على الحيّ: كل صورة لها ملف في storage.objects، والمقبول مثبّت بملفه
+insert into storage.objects (bucket_id, name) values ('reseller-products', '${OWNER}/own1.svg'), ('reseller-products', '${OWNER}/own2.svg');
+update public.reseller_own_products o set image_object_id = so.id from storage.objects so where so.bucket_id = 'reseller-products' and so.name = o.image_path;
 `
 }

@@ -1135,10 +1135,14 @@ begin
   perform pg_temp.as_('anon');
   perform pg_temp.eq(public.reseller_phone_register('07701112233', 'secret-pass-1', 'اسم')->>'status', 'exists', '17أ12 رقم مسجَّل بتيليغرام لا يُسجَّل بكلمة سر');
   -- حدّ لكل عنوان: عشر محاولات في الساعة (الناجحة والمكررة)، ولا يحجب غيره
-  perform set_config('request.headers', '{"x-forwarded-for": "203.0.113.7, 10.0.0.1"}', true);
-  for i in 1..10 loop perform public.reseller_phone_register('07701112299', 'another-pass', 'غيره'); end loop;
-  perform pg_temp.fails('select public.reseller_phone_register(''07701112266'', ''secret-pass-1'', ''اسم'')', 'محاولات كثيرة', '17أ13 الفحص المتكرر من عنوان واحد يتوقف');
-  perform set_config('request.headers', '{"x-forwarded-for": "198.51.100.9"}', true);
+  -- العنوان من cf-connecting-ip؛ تغيير أول x-forwarded-for (يكتبه المتصل) لا يتجاوز الحد
+  for i in 1..10 loop
+    perform set_config('request.headers', format('{"cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "10.9.%s.1, 203.0.113.7"}', i), true);
+    perform public.reseller_phone_register('07701112299', 'another-pass', 'غيره');
+  end loop;
+  perform set_config('request.headers', '{"cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "1.2.3.4"}', true);
+  perform pg_temp.fails('select public.reseller_phone_register(''07701112266'', ''secret-pass-1'', ''اسم'')', 'محاولات كثيرة', '17أ13 الفحص المتكرر من عنوان واحد يتوقف ولو تغيّر x-forwarded-for');
+  perform set_config('request.headers', '{"cf-connecting-ip": "198.51.100.9"}', true);
   perform pg_temp.eq(public.reseller_phone_register('07701112266', 'secret-pass-1', 'اسم')->>'status', 'created', '17أ14 وعنوان آخر يسجّل');
   perform set_config('request.headers', '{}', true);
   perform pg_temp.out();
@@ -1301,6 +1305,21 @@ begin
   ns := pg_temp.mk_user('NS');
   perform pg_temp.as_('authenticated', ns);
   perform pg_temp.fails(format('insert into storage.objects (bucket_id, name) values (''reseller-products'', %L)', ns || '/x.png'), 'row-level security', '17ح6 لا رفع بلا متجر');
+  perform pg_temp.out();
+  -- الصورة المقبولة مثبّتة بملفها: حذفها وإعادة رفعها بالاسم نفسه، أو تغيير نسختها، يُخفيها عن الزبون
+  perform pg_temp.as_('anon');
+  perform pg_temp.eq((select x->>'image_path' from jsonb_array_elements(public.reseller_store_own('store-a')->'products') x where x->>'id' = op::text), pg_temp.f('A') || '/candle.png', '17ح7 الصورة المقبولة تظهر');
+  perform pg_temp.out();
+  delete from storage.objects where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/candle.png';
+  insert into storage.objects (bucket_id, name) values ('reseller-products', pg_temp.f('A') || '/candle.png');
+  perform pg_temp.as_('anon');
+  perform pg_temp.want((select x->>'image_path' from jsonb_array_elements(public.reseller_store_own('store-a')->'products') x where x->>'id' = op::text) is null, '17ح8 ملف جديد بالاسم نفسه لا يظهر بلا مراجعة');
+  perform pg_temp.out();
+  update storage.objects set version = 'overwritten' where bucket_id = 'reseller-products' and name = pg_temp.f('A') || '/candle.png';
+  perform pg_temp.as_('authenticated', pg_temp.f('A'));
+  perform public.reseller_own_save(jsonb_build_object('id', op, 'is_available', true));
+  perform pg_temp.out();
+  perform pg_temp.eq((select status from public.reseller_own_products where id = op), 'pending', '17ح9 حفظه بعد تغيّر الملف يعيده للمراجعة');
   perform pg_temp.as_('authenticated', pg_temp.f('A'));
   perform pg_temp.out();
   perform pg_temp.eq((select file_size_limit || array_to_string(allowed_mime_types, ',') from storage.buckets where id = 'reseller-products'), '2097152image/png,image/jpeg,image/webp', '17ح2 حدود الحاوية');
