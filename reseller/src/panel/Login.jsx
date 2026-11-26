@@ -42,9 +42,32 @@ const STEPS = [
   ['نحن نكمل الباقي', 'الزبون يطلب من متجرك، فنجهّز الطلب ونوصله ونستلم المبلغ، ويدخل ربحك في رصيدك.'],
 ]
 
+/** مناطق التوصيل وأسعارها الحقيقية (نفس قائمة الطلب)، بترتيب عشوائي ومتنوّع السعر */
+function useZones() {
+  const [zones, setZones] = useState([])
+  useEffect(() => {
+    sb.from('delivery_zones').select('name, fee').eq('is_active', true).not('zad_zone_id', 'is', null).gt('fee', 0)
+      .then(({ data }) => {
+        const pool = (data ?? []).filter((z) => !/زاد/.test(z.name)).sort(() => Math.random() - 0.5)
+        const out = []   // لا يتكرر السعر نفسه مرتين متتاليتين
+        while (pool.length) { const i = pool.findIndex((z) => z.fee !== out.at(-1)?.fee); out.push(pool.splice(i < 0 ? 0 : i, 1)[0]) }
+        setZones(out)
+      })
+  }, [])
+  return zones
+}
+
 function ProfitExample() {
   const [n, setN] = useState(4)
+  const [k, setK] = useState(0)
+  const zones = useZones()
   const base = 10000, profit = 2500
+  const zone = zones.length ? zones[k % zones.length] : null
+  useEffect(() => {
+    if (zones.length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const t = setInterval(() => setK((x) => x + 1), 2600)
+    return () => clearInterval(t)
+  }, [zones.length])
   return (
     <div className="reveal relative overflow-hidden rounded-[28px] bg-forest p-6 text-white shadow-[var(--shadow-lift)]">
       <span className="glow pointer-events-none absolute -top-16 -left-16 size-48 rounded-full bg-gold/25 blur-3xl" aria-hidden="true" />
@@ -52,8 +75,15 @@ function ProfitExample() {
       <ol className="relative mt-4 space-y-3 text-[16px]">
         <li className="flex items-baseline justify-between gap-3"><span className="text-white/75">سعر المنتج عندنا</span><b className="num">{iqd(base)}</b></li>
         <li className="flex items-baseline justify-between gap-3"><span className="text-white/75">تضيف ربحك</span><b className="num text-gold">+ {iqd(profit)}</b></li>
-        <li className="flex items-baseline justify-between gap-3 border-t border-white/15 pt-3"><span className="text-white/75">يدفعه الزبون عند الاستلام</span><b className="num">{iqd(base + profit)}</b></li>
+        {zone && (
+          <li key={k} className="rise flex items-baseline justify-between gap-3">
+            <span className="min-w-0 truncate text-white/75">توصيل <b className="font-bold text-white">{zone.name}</b></span>
+            <b className="num shrink-0">+ {iqd(zone.fee)}</b>
+          </li>
+        )}
+        <li className="flex items-baseline justify-between gap-3 border-t border-white/15 pt-3"><span className="text-white/75">يدفعه الزبون عند الاستلام</span><b className="num">{iqd(base + profit + (zone?.fee ?? 0))}</b></li>
       </ol>
+      {zone && <p className="relative mt-3 text-[13px] leading-6 text-white/60">أجرة التوصيل يدفعها الزبون حسب منطقته، ولا تُنقص شيئاً من ربحك.</p>}
       <div className="relative mt-6 rounded-2xl bg-white/8 p-4 ring-1 ring-white/10">
         <label htmlFor="pcs" className="flex items-baseline justify-between text-[15px]"><span>لو بعت يومياً</span><b className="num text-[18px]">{num(n)} {n === 1 ? 'قطعة' : n <= 10 ? 'قطع' : 'قطعة'}</b></label>
         <input id="pcs" type="range" min="1" max="20" value={n} onChange={(e) => setN(+e.target.value)} className="mt-3 w-full accent-[var(--color-gold)]" />
