@@ -51,6 +51,9 @@ export function writeAssets() {
   mkdirSync(`${ASSETS}p`, { recursive: true })
   mkdirSync(`${ASSETS}${OWNER}`, { recursive: true })
   P.forEach((r, i) => writeFileSync(`${ASSETS}p/${i + 1}.svg`, svg(i + 1, r[10])))
+  mkdirSync(`${ASSETS}products/${OWNER}`, { recursive: true })
+  writeFileSync(`${ASSETS}products/${OWNER}/own1.svg`, svg(91, 'jar'))
+  writeFileSync(`${ASSETS}products/${OWNER}/own2.svg`, svg(57, 'box'))
   writeFileSync(`${ASSETS}${OWNER}/logo.svg`,
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="22" fill="#0f766e"/><path d="M28 62V34l40 28V34" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></svg>')
 }
@@ -112,5 +115,14 @@ do $$ declare c jsonb; begin
 end $$;
 reset role;
 update public.orders set status = 'delivered' where customer_phone in ('07711000001', '07711000002');
+
+-- منتجات «متجر النور» الخاصة (يوصلها بنفسه): اثنان مقبولان وواحد بانتظار المراجعة
+update public.reseller_stores set own_delivery_fee = 2000 where slug = 'noor-store';
+insert into public.reseller_own_products (store_id, name, description, price, image_path, status)
+select s.id, v.n, v.d, v.p, v.i, v.st from public.reseller_stores s, (values
+  ('شمعة معطّرة يدوية الصنع', 'شمع صويا طبيعي برائحة العود، تدوم 40 ساعة.', 8000, '${OWNER}/own1.svg', 'approved'),
+  ('صابون بالعسل والشوفان', 'قطعة 120 غرام، مصنوعة يدوياً.', 3500, '${OWNER}/own2.svg', 'approved'),
+  ('مبخرة خشبية', null, 15000, null, 'pending')) v(n, d, p, i, st)
+ where s.slug = 'noor-store';
 `
 }

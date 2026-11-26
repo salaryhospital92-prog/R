@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { MessageCircle, Search, ShoppingBag, X } from 'lucide-react'
 import { iqd, norm } from '../lib/format'
-import { inStock, maxUnits, minNote, minUnits, priceNote, unitsText } from '../lib/qty'
+import { inStock, maxUnits, minNote, minUnits, priceNote } from '../lib/qty'
 import { useShop } from '../lib/shop'
 import { Link, Logo, Notice, ProductImage, Stepper } from '../ui'
 
@@ -12,21 +11,21 @@ function Card({ p }) {
   const line = items.find((i) => i.p.id === p.id)
   const ok = inStock(p)
   return (
-    <li className="flex flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
-      <Link to={`/p/${p.id}`} className="block" aria-label={p.name}>
-        <ProductImage p={p} className={ok ? '' : 'opacity-50'} />
+    <li className="group flex flex-col">
+      <Link to={`/p/${p.id}`} className="block overflow-hidden rounded-[20px] bg-card shadow-[var(--shadow-card)]" aria-label={p.name}>
+        <ProductImage p={p} className={`transition duration-300 group-hover:scale-[1.02] ${ok ? '' : 'opacity-45 grayscale'}`} />
       </Link>
-      <div className="flex flex-1 flex-col gap-1 p-3">
-        <Link to={`/p/${p.id}`} className="line-clamp-2 min-h-12 text-[15px] font-medium leading-6">{p.name}</Link>
-        <p className="text-lg font-extrabold tabular-nums">{iqd(p.price)}</p>
-        <p className="min-h-5 text-[13px] leading-5 text-stone-500">{priceNote(p)}{minNote(p) && ` · ${minNote(p)}`}</p>
-        <div className="mt-auto pt-2">
-          {!ok ? <span className="grid min-h-11 place-items-center rounded-xl bg-stone-100 text-[15px] font-bold text-stone-500">نفد</span>
-            : line ? <Stepper value={line.units} min={minUnits(p)} max={maxUnits(p)} label={p.name}
+      <div className="flex flex-1 flex-col px-1 pt-3">
+        <Link to={`/p/${p.id}`} className="line-clamp-2 min-h-11 text-[15px] font-medium leading-[22px] text-ink">{p.name}</Link>
+        <p className="num mt-1.5 text-[18px] font-extrabold">{iqd(p.price)}</p>
+        <p className="min-h-5 text-[12.5px] leading-5 text-mute">{p.pack_qty ? priceNote(p) : minNote(p)}</p>
+        <div className="mt-auto pt-3">
+          {!ok ? <p className="grid min-h-12 place-items-center rounded-full bg-wash text-[14px] font-bold text-mute">نفدت الكمية</p>
+            : line ? <Stepper size="sm" value={line.units} min={minUnits(p)} max={maxUnits(p)} label={p.name}
                 onChange={(u) => cart.setUnits(p, u)} onRemove={() => cart.remove(p.id)} />
             : <button type="button" onClick={() => cart.setUnits(p, minUnits(p))}
-                className="min-h-11 w-full rounded-xl bg-brand-soft text-[15px] font-bold text-brand-deep transition active:scale-95">
-                أضف للسلة{p.pack_qty ? ` · ${unitsText(p, minUnits(p))}` : ''}
+                className="min-h-12 w-full rounded-full bg-ink text-[14px] font-bold text-white transition active:scale-[.98]">
+                أضف إلى السلة
               </button>}
         </div>
       </div>
@@ -41,7 +40,7 @@ export default function Home() {
   const cats = useMemo(() => {
     const m = new Map()
     products.forEach((p) => m.set(p.category_id, p.category))
-    return [...m].sort((a, b) => a[1].localeCompare(b[1], 'ar'))
+    return [...m].sort((a, b) => (a[0] < 0 ? -1 : b[0] < 0 ? 1 : a[1].localeCompare(b[1], 'ar')))
   }, [products])
   const list = useMemo(() => {
     const q = norm(filter.q).trim()
@@ -50,51 +49,54 @@ export default function Home() {
   const set = (patch) => { setFilter({ ...filter, ...patch }); setMore(PAGE) }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-2xl bg-white pb-28">
-      <header className="px-4 pt-4">
-        <div className="flex items-center gap-3">
-          <Logo store={store} />
-          <h1 className="min-w-0 flex-1 truncate text-xl font-extrabold">{store.name}</h1>
-          {store.whatsapp && (
-            <a href={`https://wa.me/${store.whatsapp}`} target="_blank" rel="noopener noreferrer" aria-label="تواصل عبر واتساب"
-              className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-deep"><MessageCircle className="size-5" /></a>
-          )}
+    <div className="mx-auto min-h-dvh max-w-2xl pb-32">
+      <header className="px-5 pt-7">
+        <div className="flex items-center gap-4">
+          <Logo store={store} size={56} />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[24px] font-black leading-8">{store.name}</h1>
+            <p className="text-[13px] text-mute">الدفع نقداً عند الاستلام</p>
+          </div>
         </div>
         {store.about && (
-          <button type="button" onClick={() => setAboutOpen(!aboutOpen)} className="mt-3 block w-full text-start text-[15px] leading-6 text-stone-600">
+          <button type="button" onClick={() => setAboutOpen(!aboutOpen)} className="mt-4 block w-full text-start text-[15px] font-light leading-7 text-ink-2">
             <span className={aboutOpen ? '' : 'line-clamp-2'}>{store.about}</span>
           </button>
         )}
-        {!store.open && <div className="mt-3"><Notice title="الطلب متوقف مؤقتاً">يمكنك تصفح المنتجات، وسنفتح الطلب قريباً.</Notice></div>}
-        {notes.length > 0 && <div className="mt-3"><Notice title="تحديث على سلتك" onClose={dismissNotes}>{notes.map((n) => <p key={n}>{n}</p>)}</Notice></div>}
+        {store.whatsapp && (
+          <a href={`https://wa.me/${store.whatsapp}`} target="_blank" rel="noopener noreferrer"
+            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-card px-4 text-[14px] font-bold text-ink ring-1 ring-line">تواصل معنا عبر واتساب</a>
+        )}
+        <div className="mt-4 space-y-3">
+          {!store.open && <Notice title="الطلب متوقف مؤقتاً">يمكنك تصفح المنتجات، وسنفتح الطلب قريباً.</Notice>}
+          {notes.length > 0 && <Notice title="تحديث على سلتك" onClose={dismissNotes}>{notes.map((n) => <p key={n}>{n}</p>)}</Notice>}
+        </div>
       </header>
 
-      <div className="sticky top-0 z-20 mt-3 border-b border-stone-100 bg-white/95 px-4 pb-2 pt-2 backdrop-blur">
-        <label className="relative block">
+      <div className="sticky top-0 z-20 mt-5 bg-paper/92 px-5 pb-3 pt-3 backdrop-blur">
+        <label className="block">
           <span className="sr-only">ابحث عن منتج</span>
-          <Search className="pointer-events-none absolute start-3.5 top-1/2 size-5 -translate-y-1/2 text-stone-400" aria-hidden="true" />
           <input type="search" value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder="ابحث عن منتج" enterKeyHint="search"
-            className="h-12 w-full rounded-2xl bg-stone-100 pe-11 ps-11 outline-none placeholder:text-stone-400 focus:bg-white focus:ring-2 focus:ring-brand" />
-          {filter.q && <button type="button" onClick={() => set({ q: '' })} aria-label="مسح البحث" className="absolute end-1 top-1/2 grid size-11 -translate-y-1/2 place-items-center text-stone-500"><X className="size-4" /></button>}
+            className="h-13 w-full rounded-2xl bg-card px-5 shadow-[var(--shadow-card)] outline-none ring-1 ring-line transition placeholder:text-mute focus:ring-brand" />
         </label>
         {cats.length > 1 && (
-          <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label="الأصناف">
+          <div className="no-scrollbar -mx-5 mt-3 flex gap-2 overflow-x-auto px-5" role="tablist" aria-label="الأصناف">
             {[[0, 'الكل'], ...cats].map(([id, name]) => (
               <button key={id} type="button" role="tab" aria-selected={filter.cat === id} onClick={() => set({ cat: id })}
-                className={`min-h-11 shrink-0 rounded-full px-4 text-[15px] font-medium transition ${filter.cat === id ? 'bg-brand text-brand-ink' : 'bg-stone-100 text-stone-700'}`}>{name}</button>
+                className={`min-h-11 shrink-0 rounded-full px-5 text-[14px] transition ${filter.cat === id ? 'bg-ink font-bold text-white' : 'bg-card font-medium text-ink-2 ring-1 ring-line'}`}>{name}</button>
             ))}
           </div>
         )}
       </div>
 
-      <main className="px-4 pt-4">
+      <main className="px-5 pt-3">
         {list.length === 0 ? (
-          <p className="py-16 text-center text-stone-500">{products.length ? 'لا نتائج مطابقة لبحثك' : 'لا توجد منتجات في المتجر حالياً'}</p>
+          <p className="py-20 text-center text-[16px] text-mute">{products.length ? 'لا نتائج مطابقة لبحثك' : 'لا توجد منتجات في المتجر حالياً'}</p>
         ) : (
           <>
-            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">{list.slice(0, more).map((p) => <Card key={p.id} p={p} />)}</ul>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-3">{list.slice(0, more).map((p) => <Card key={p.id} p={p} />)}</ul>
             {list.length > more && (
-              <button type="button" onClick={() => setMore(more + PAGE)} className="mt-5 min-h-12 w-full rounded-2xl bg-stone-100 font-bold">عرض المزيد</button>
+              <button type="button" onClick={() => setMore(more + PAGE)} className="mt-8 min-h-13 w-full rounded-2xl bg-card font-bold ring-1 ring-line">عرض المزيد</button>
             )}
           </>
         )}
@@ -102,10 +104,9 @@ export default function Home() {
 
       {count > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 px-4 safe-b">
-          <Link to="/cart" className="mx-auto flex min-h-14 max-w-2xl items-center gap-3 rounded-2xl bg-brand px-5 font-bold text-brand-ink shadow-lg shadow-black/20 active:scale-[.99]">
-            <ShoppingBag className="size-5" aria-hidden="true" />
-            <span className="flex-1">عرض السلة ({count})</span>
-            <span className="tabular-nums">{iqd(subtotal)}</span>
+          <Link to="/cart" className="rise mx-auto flex min-h-15 max-w-2xl items-center justify-between rounded-[22px] bg-ink px-6 text-white shadow-[var(--shadow-lift)] active:scale-[.99]">
+            <span className="text-[16px] font-bold">عرض السلة <span className="font-light text-white/70">· {count} {count === 1 ? 'منتج' : 'منتجات'}</span></span>
+            <span className="num text-[17px] font-extrabold">{iqd(subtotal)}</span>
           </Link>
         </div>
       )}

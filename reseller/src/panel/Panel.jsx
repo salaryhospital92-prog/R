@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
-import { CircleCheck, Clock, Home as HomeIcon, LogOut, MoreHorizontal, Package, ShoppingBag, Wallet, X } from 'lucide-react'
-import { errText } from '../lib/config'
-import { logoUrl } from '../lib/config'
-import { Button, Notice, StateScreen } from '../ui'
+import { Home as HomeIcon, LayoutGrid, Menu, ReceiptText, Wallet } from 'lucide-react'
+import { errText, logoUrl } from '../lib/config'
+import { Button, StateScreen, initial } from '../ui'
 import { rpc, sb } from './sb'
 import Login from './Login'
 import Wizard from './Wizard'
@@ -17,12 +16,10 @@ const subs = new Set()
 addEventListener('hashchange', () => subs.forEach((f) => f()))
 const useHash = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => location.hash)
 
-const inkFor = (hex) => {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#1c1917' : '#ffffff'
-}
+// أيقونات شريط التنقل وحدها في اللوحة، وكلها بتسمية
+const TABS = [['', 'الرئيسية', HomeIcon], ['products', 'المنتجات', LayoutGrid], ['orders', 'الطلبات', ReceiptText], ['money', 'أرباحي', Wallet], ['more', 'المزيد', Menu]]
 
-const TABS = [['', 'الرئيسية', HomeIcon], ['products', 'المنتجات', Package], ['orders', 'الطلبات', ShoppingBag], ['money', 'أرباحي', Wallet], ['more', 'المزيد', MoreHorizontal]]
+export const Wordmark = ({ className = '' }) => <span className={`font-black tracking-tight text-brand ${className}`}>رزق</span>
 
 export default function Panel() {
   const [auth, setAuth] = useState('loading')          // loading | out | in
@@ -39,7 +36,7 @@ export default function Panel() {
 
   const reload = useCallback(async () => {
     try { setMe(await rpc('reseller_me')); setErr(null) } catch (e) {
-      if (e?.code === 'PGRST301' || e?.code === 'PGRST303') await sb.auth.signOut({ scope: 'local' })     // جلسة لم تعد صالحة: دخول من جديد
+      if (e?.code === 'PGRST301' || e?.code === 'PGRST303') await sb.auth.signOut({ scope: 'local' })     // جلسة لم تعد صالحة
       else setErr(errText(e))
     }
   }, [])
@@ -51,55 +48,45 @@ export default function Panel() {
   }, [])
 
   const store = me?.store
-  useEffect(() => {
-    const c = store?.theme_color ?? '#059669'
-    document.documentElement.style.setProperty('--brand', c)
-    document.documentElement.style.setProperty('--on-brand', inkFor(c))
-  }, [store?.theme_color])
-
-  if (auth === 'loading' || (auth === 'in' && me === undefined && !err)) return <div className="grid min-h-dvh place-items-center"><div className="skeleton size-12 rounded-2xl" aria-label="جارٍ التحميل" /></div>
+  if (auth === 'loading' || (auth === 'in' && me === undefined && !err)) return <div className="grid min-h-dvh place-items-center"><Wordmark className="text-[34px] opacity-60" /></div>
   if (auth === 'out') return <Login />
-  if (err) return <StateScreen icon={Clock} title="تعذّر التحميل" text={err} action={<Button onClick={reload}>إعادة المحاولة</Button>} />
-  if (!me) {
-    return <StateScreen icon={X} title="هذا الحساب ليس حساب مروّج" text="ادخل بحساب تيليغرام الخاص بك."
-      action={<Button onClick={() => sb.auth.signOut()}>خروج</Button>} />
-  }
+  if (err) return <StateScreen title="تعذّر التحميل" text={err} action={<Button variant="ink" onClick={reload}>إعادة المحاولة</Button>} />
+  if (!me) return <StateScreen title="هذا الحساب ليس حساب متجر" text="ادخل برقم هاتفك أو بحساب تيليغرام الخاص بك." action={<Button variant="ink" onClick={() => sb.auth.signOut()}>خروج</Button>} />
   if (!store || store.status === 'draft') return <Wizard me={me} reload={reload} />
 
-  const tab = hash.replace(/^#\/?/, '').split('/')[0]
-  const sub = hash.replace(/^#\/?/, '').split('/')[1] ?? ''
+  const [tab, sub = ''] = hash.replace(/^#\/?/, '').split('/')
   const ctx = { me, store, reload, flash }
   return (
-    <div className="mx-auto min-h-dvh max-w-2xl bg-white pb-24">
-      <header className="flex items-center gap-3 border-b border-stone-100 px-4 py-3">
-        <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-brand font-bold text-brand-ink">
-          {store.logo_path ? <img src={logoUrl(store.logo_path)} alt="" className="size-full object-cover" referrerPolicy="no-referrer" /> : [...store.name.replace(/^ال(?=.)/, '')][0]}
+    <div className="mx-auto min-h-dvh max-w-2xl pb-28">
+      <header className="flex items-center gap-3 px-5 pb-3 pt-5">
+        <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl text-[19px] font-black text-white" style={{ background: store.theme_color }}>
+          {store.logo_path ? <img src={logoUrl(store.logo_path)} alt="" className="size-full object-cover" referrerPolicy="no-referrer" /> : initial(store.name)}
         </span>
-        <div className="min-w-0 flex-1"><p className="truncate font-extrabold">{store.name}</p><p className="text-[13px] text-stone-500">رزق · لوحة المتجر</p></div>
-        <button type="button" onClick={() => sb.auth.signOut()} aria-label="خروج" className="grid size-11 place-items-center rounded-xl text-stone-500 active:bg-stone-100"><LogOut className="size-5" /></button>
+        <div className="min-w-0 flex-1"><p className="truncate text-[17px] font-extrabold leading-6">{store.name}</p><p className="text-[12px] text-mute">لوحة متجرك على <Wordmark className="text-[12px]" /></p></div>
+        <button type="button" onClick={() => sb.auth.signOut()} className="min-h-11 rounded-2xl px-3 text-[13px] font-bold text-mute hover:bg-wash hover:text-ink">خروج</button>
       </header>
-      <main className="px-4 py-4">
-        {store.status === 'suspended' && <div className="mb-4"><Notice title="متجرك موقوف">تواصل مع الإدارة. أرباحك محفوظة.</Notice></div>}
-        {tab === 'products' ? <Products {...ctx} />
-          : tab === 'orders' ? <Orders {...ctx} />
+      <main className="px-5 pt-2">
+        {store.status === 'suspended' && <p className="mb-5 rounded-2xl border-s-4 border-bad bg-[#fcefee] p-4 text-[15px]"><b>متجرك موقوف.</b> تواصل مع الإدارة. أرباحك محفوظة.</p>}
+        {tab === 'products' ? <Products {...ctx} sub={sub} />
+          : tab === 'orders' ? <Orders {...ctx} sub={sub} />
           : tab === 'money' ? <Earnings {...ctx} />
           : tab === 'more' ? <More {...ctx} sub={sub} />
           : <HomeTab {...ctx} />}
       </main>
 
       {toast && (
-        <div className="fixed inset-x-0 bottom-20 z-40 px-4"><div role="status" className="rise mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-stone-900 px-4 py-3 text-[15px] text-white shadow-lg">
-          <CircleCheck className="size-5 shrink-0 text-emerald-400" aria-hidden="true" /><span className="flex-1">{toast.text}</span>
-          {toast.action && <button type="button" className="min-h-11 px-2 font-bold text-amber-300" onClick={() => { toast.action.run(); setToast(null) }}>{toast.action.label}</button>}
+        <div className="fixed inset-x-0 bottom-24 z-40 px-4"><div role="status" className="rise mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-ink px-5 py-3.5 text-[15px] text-white shadow-[var(--shadow-lift)]">
+          <span className="flex-1">{toast.text}</span>
+          {toast.action && <button type="button" className="min-h-10 rounded-xl px-3 font-bold text-[#f3d27a]" onClick={() => { toast.action.run(); setToast(null) }}>{toast.action.label}</button>}
         </div></div>
       )}
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur safe-b" aria-label="التنقل">
-        <ul className="mx-auto flex max-w-2xl">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t hairline bg-card/95 backdrop-blur safe-b" aria-label="التنقل">
+        <ul className="mx-auto flex max-w-2xl px-2 pt-1.5">
           {TABS.map(([id, label, Icon]) => (
             <li key={id} className="flex-1">
               <a href={`#/${id}`} aria-current={tab === id ? 'page' : undefined}
-                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[12px] font-medium ${tab === id ? 'text-brand-deep' : 'text-stone-500'}`}>
-                <Icon className="size-6" aria-hidden="true" />{label}
+                className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl text-[12px] transition ${tab === id ? 'font-bold text-ink' : 'font-medium text-mute'}`}>
+                <Icon className="size-[22px]" strokeWidth={tab === id ? 2.25 : 1.75} aria-hidden="true" />{label}
               </a>
             </li>
           ))}

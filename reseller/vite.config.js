@@ -45,16 +45,16 @@ const devOnly = () => ({
           res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(out.map((m) => m.text)))
         }
         // رفع الشعار: POST/PUT /api/storage/v1/object/reseller-logos/<path>
-        const up = url.match(/^\/api\/storage\/v1\/object\/reseller-logos\/(.+)$/)
+        const up = url.match(/^\/api\/storage\/v1\/object\/(reseller-logos|reseller-products)\/(.+)$/)
         if (up && ['POST', 'PUT'].includes(req.method)) {
-          const file = normalize(join(ASSETS, decodeURIComponent(up[1])))
+          const file = normalize(join(ASSETS, up[1] === 'reseller-products' ? 'products' : '', decodeURIComponent(up[2])))
           if (!file.startsWith(normalize(ASSETS))) return next()
           mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, await body(req))
-          res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ Key: `reseller-logos/${up[1]}` }))
+          res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify({ Key: `${up[1]}/${up[2]}` }))
         }
         // صور وشعارات
-        const m = url.match(/^\/(?:dev-img|api\/storage\/v1\/object\/public\/reseller-logos)\/(.+)$/)
-        const file = m && normalize(join(ASSETS, decodeURIComponent(m[1])))
+        const m = url.match(/^\/(dev-img|api\/storage\/v1\/object\/public\/reseller-logos|api\/storage\/v1\/object\/public\/reseller-products)\/(.+)$/)
+        const file = m && normalize(join(ASSETS, m[1].endsWith('reseller-products') ? 'products' : '', decodeURIComponent(m[2])))
         if (!file || !file.startsWith(normalize(ASSETS)) || !existsSync(file)) return next()
         res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream')
         res.setHeader('Cache-Control', 'no-cache')

@@ -1,25 +1,62 @@
 @import "tailwindcss";
 
-/* لون المتجر يُضبط وقت التشغيل على الجذر (--brand و--on-brand) من theme_color */
+/* =====================================================================
+   نظام التصميم: خط تجوال بكل أوزانه، ورق دافئ وحبر عميق، ولون واحد للعلامة.
+   لون العلامة يُضبط وقت التشغيل على الجذر: --brand (لون المتجر أو لون رزق في اللوحة) و--on-brand.
+   ===================================================================== */
 @theme inline {
+  --font-sans: "Tajawal", system-ui, "Segoe UI", Tahoma, sans-serif;
+
+  --color-ink: #17161a;          /* النص الأساسي */
+  --color-ink-2: #45434a;        /* نص ثانوي */
+  --color-mute: #8a8790;         /* تسميات وتلميحات */
+  --color-line: #ebe8e1;         /* فواصل وحدود */
+  --color-paper: #f8f6f1;        /* الخلفية */
+  --color-card: #ffffff;         /* الأسطح */
+  --color-wash: #f2efe8;         /* حقول وأسطح هادئة */
+  --color-ok: #1f7a4d;
+  --color-warn: #9a6a12;
+  --color-bad: #b42318;
+
   --color-brand: var(--brand);
   --color-brand-ink: var(--on-brand);
-  --color-brand-soft: color-mix(in srgb, var(--brand) 10%, white);
-  --color-brand-deep: color-mix(in srgb, var(--brand) 50%, black);
-  --font-sans: "SF Arabic", system-ui, "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
+  --color-brand-soft: color-mix(in srgb, var(--brand) 9%, white);
+  --color-brand-deep: color-mix(in srgb, var(--brand) 55%, black);
+
+  --radius-card: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(23 22 26 / 0.04), 0 8px 24px -12px rgb(23 22 26 / 0.12);
+  --shadow-lift: 0 12px 32px -12px rgb(23 22 26 / 0.28);
 }
 
-:root { --brand: #059669; --on-brand: #ffffff; }
+:root { --brand: #0e6b57; --on-brand: #ffffff; }
 
-html { -webkit-text-size-adjust: 100%; }
-body { background: #fafaf9; color: #1c1917; font-family: var(--font-sans); overscroll-behavior-y: none; }
-input, select, textarea, button { font: inherit; }
-/* iOS يكبّر الصفحة عند التركيز على حقل أصغر من 16px */
-input, select, textarea { font-size: 16px; }
-:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 55%, white); outline-offset: 2px; }
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans);
+    font-weight: 400; line-height: 1.6; overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  /* iOS يكبّر الصفحة عند التركيز على حقل أصغر من 16px */
+  input, select, textarea { font-size: 16px; }
+  ::placeholder { color: var(--color-mute); opacity: 1; }
+  :focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; border-radius: 10px; }
+  ::selection { background: color-mix(in srgb, var(--brand) 22%, white); }
+}
+@layer components {
+  .num { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--color-mute); }
+  .hairline { border-color: var(--color-line); }
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+.safe-b { padding-bottom: max(0.875rem, env(safe-area-inset-bottom)); }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-.safe-b { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
-@keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
-.rise { animation: sheet-in .18s ease-out; }
-@keyframes pulse-soft { 50% { opacity: .55 } }
-.skeleton { background: #e7e5e4; animation: pulse-soft 1.4s ease-in-out infinite; }
+@keyframes rise { from { transform: translateY(6px); opacity: 0 } to { transform: none; opacity: 1 } }
+.rise { animation: rise .22s cubic-bezier(.2, .8, .2, 1); }
+@keyframes sheet { from { transform: translateY(100%) } to { transform: none } }
+.sheet { animation: sheet .28s cubic-bezier(.2, .8, .2, 1); }
+@keyframes shimmer { 50% { opacity: .5 } }
+.skeleton { background: var(--color-wash); animation: shimmer 1.4s ease-in-out infinite; }

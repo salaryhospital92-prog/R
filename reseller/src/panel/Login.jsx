@@ -1,18 +1,88 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Store } from 'lucide-react'
 import { errText } from '../lib/config'
-import { Notice } from '../ui'
+import { phoneOf } from '../lib/format'
+import { Button, Field, Notice, field } from '../ui'
 import { rpc, sb } from './sb'
+import { Wordmark } from './Panel'
 
 // المحاولة الجارية تُحفظ في الجلسة: فتح تيليغرام قد يعيد تحميل الصفحة، فتستأنفها بدل أن تبدأ جديدة ويضيع تأكيدك
 const KEY = 'razq-login'
 const saved = () => { try { const v = JSON.parse(sessionStorage.getItem(KEY)); return v && Date.now() - v.at < 170000 ? v : null } catch { return null } }
 const keep = (v) => { try { v ? sessionStorage.setItem(KEY, JSON.stringify(v)) : sessionStorage.removeItem(KEY) } catch { /* وضع خاص */ } }
-
 const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('')
+/** البريد التركيبي لحساب الهاتف (كما ينشئه reseller_phone_register) */
+const phoneEmail = (local) => `ph964${local.slice(1)}@phone.invalid`
 
-/** الدخول عبر تيليغرام: زر واحد يفتح البوت، ثم يضغط الرقم الظاهر هنا. الرمز يُجهَّز عند فتح الصفحة لتكون الضغطة الأولى مباشرة. */
 export default function Login() {
+  const [method, setMethod] = useState(() => (saved() ? 'telegram' : 'phone'))
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 pb-10 pt-12">
+      <Wordmark className="text-[38px] leading-none" />
+      <h1 className="mt-8 text-[30px] font-black leading-[42px]">متجرك الإلكتروني،<br />بلا رأس مال</h1>
+      <p className="mt-3 text-[16px] font-light leading-7 text-ink-2">تبيع منتجات جاهزة باسمك وشعارك، ونحن نجهّز الطلب ونوصّله. ربحك يصلك كل فترة.</p>
+
+      <div className="mt-9 grid grid-cols-2 rounded-2xl bg-wash p-1" role="tablist" aria-label="طريقة الدخول">
+        {[['phone', 'رقم الهاتف'], ['telegram', 'تيليغرام']].map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={method === k} onClick={() => setMethod(k)}
+            className={`min-h-12 rounded-xl text-[15px] transition ${method === k ? 'bg-card font-bold text-ink shadow-[var(--shadow-card)]' : 'font-medium text-mute'}`}>{label}</button>
+        ))}
+      </div>
+      <div className="mt-7">{method === 'phone' ? <PhoneLogin /> : <TelegramLogin />}</div>
+    </div>
+  )
+}
+
+function PhoneLogin() {
+  const [mode, setMode] = useState('in')                 // in | new
+  const [f, setF] = useState({ phone: '', password: '', name: '' })
+  const [err, setErr] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const set = (p) => { setF({ ...f, ...p }); setErr(null) }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    const phone = phoneOf(f.phone)
+    if (!phone) return setErr('أدخل رقم موبايل عراقي صحيح، مثل 07701234567')
+    if (f.password.length < 8) return setErr('كلمة السر من 8 أحرف على الأقل')
+    if (mode === 'new' && f.name.trim().length < 2) return setErr('اكتب اسمك')
+    setBusy(true); setErr(null)
+    try {
+      if (mode === 'new') await rpc('reseller_phone_register', { p_phone: phone, p_password: f.password, p_name: f.name.trim() })
+      const { error } = await sb.auth.signInWithPassword({ email: phoneEmail(phone), password: f.password })
+      if (error) throw Object.assign(new Error(/invalid/i.test(error.message) ? 'رقم الهاتف أو كلمة السر غير صحيحة' : 'تعذّر الدخول، حاول مرة أخرى'), { code: 'P0001' })
+    } catch (x) { setErr(errText(x)) } finally { setBusy(false) }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="space-y-5">
+      {err && <Notice tone="bad">{err}</Notice>}
+      {mode === 'new' && (
+        <Field id="l-name" label="اسمك">
+          <input id="l-name" className={field} value={f.name} onChange={(e) => set({ name: e.target.value })} autoComplete="name" maxLength={80} />
+        </Field>
+      )}
+      <Field id="l-phone" label="رقم الموبايل">
+        <input id="l-phone" className={`${field} num text-right`} dir="ltr" type="tel" inputMode="tel" autoComplete="tel" placeholder="07701234567"
+          value={f.phone} onChange={(e) => set({ phone: e.target.value })} />
+      </Field>
+      <Field id="l-pass" label="كلمة السر" hint={mode === 'new' ? '8 أحرف على الأقل. احفظها، فهي مفتاح متجرك.' : undefined}>
+        <input id="l-pass" className={field} type="password" autoComplete={mode === 'new' ? 'new-password' : 'current-password'}
+          value={f.password} onChange={(e) => set({ password: e.target.value })} />
+      </Field>
+      <Button variant="ink" type="submit" disabled={busy}>{busy ? 'لحظة…' : mode === 'new' ? 'إنشاء حسابي' : 'دخول'}</Button>
+      <p className="text-center text-[15px] text-ink-2">
+        {mode === 'new' ? 'لديك حساب؟ ' : 'أول مرة هنا؟ '}
+        <button type="button" onClick={() => { setMode(mode === 'new' ? 'in' : 'new'); setErr(null) }} className="min-h-11 font-bold text-ink underline decoration-line decoration-2 underline-offset-8">
+          {mode === 'new' ? 'ادخل' : 'أنشئ حساباً'}
+        </button>
+      </p>
+      {mode === 'in' && <p className="text-center text-[13px] text-mute">نسيت كلمة السر؟ ادخل بتيليغرام إن كان مربوطاً، أو راسل الدعم.</p>}
+    </form>
+  )
+}
+
+/** تيليغرام: يحفظ الرقم، يفتح البوت، ويدخل وحده بعد ضغط الرقم الصحيح */
+function TelegramLogin() {
   const [s, setS] = useState({ phase: 'starting' })     // starting | waiting | error
   const [note, setNote] = useState(null)
   const alive = useRef(true)
@@ -26,13 +96,11 @@ export default function Login() {
       const r = await rpc('reseller_login_start', { p_secret: secret })
       if (!alive.current) return
       const v = { ...r, secret, at: Date.now() }
-      keep(v)
-      setS({ phase: 'waiting', ...v })
+      keep(v); setS({ phase: 'waiting', ...v })
     } catch (e) { setS({ phase: 'error', text: errText(e) }) }
   }
   useEffect(() => { const v = saved(); v ? setS({ phase: 'waiting', ...v }) : begin() }, [])
 
-  // استعلام كل ثانيتين حتى التأكيد أو الانتهاء
   useEffect(() => {
     if (s.phase !== 'waiting') return
     let stop = false, t
@@ -41,12 +109,11 @@ export default function Login() {
         const r = await rpc('reseller_login_finish', { p_nonce: s.nonce, p_secret: s.secret })
         if (stop) return
         if (r.status === 'ok') {
-          // كلمة سر عشوائية لمرة: ندخل بها ثم تُبدَّل فوراً (الجلسة تبقى)
           keep(null)
           const { error } = await sb.auth.signInWithPassword({ email: r.email, password: r.password })
           if (error) throw error
           await rpc('reseller_login_seal').catch(() => {})
-          return                                          // onAuthStateChange يُكمل
+          return
         }
         if (r.status === 'failed') return begin('الرقم الذي اخترته غير صحيح. حاول مرة أخرى.')
         if (r.status === 'expired') return begin('انتهت المهلة. حاول مرة أخرى.')
@@ -58,45 +125,33 @@ export default function Login() {
   }, [s.phase, s.nonce])
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
-      <div className="mx-auto mb-6 grid size-16 place-items-center rounded-3xl bg-brand-soft text-brand-deep"><Store className="size-8" aria-hidden="true" /></div>
-      <p className="text-center text-3xl font-extrabold text-brand-deep">رزق</p>
-      <h1 className="mt-2 text-center text-2xl font-extrabold">افتح متجرك الإلكتروني</h1>
-      <p className="mt-2 text-center leading-7 text-stone-600">بيع منتجات جاهزة باسمك وشعارك، ونحن نجهّز الطلب ونوصّله.</p>
-
-      <div className="mt-8 space-y-3">
-        {note && <Notice>{note}</Notice>}
-        {s.phase === 'error' && <Notice title="تعذّر الاتصال">{s.text}</Notice>}
-      </div>
-
+    <div className="space-y-4">
+      {note && <Notice>{note}</Notice>}
+      {s.phase === 'error' && <Notice tone="bad" title="تعذّر الاتصال">{s.text}</Notice>}
       {s.phase === 'waiting' ? (
-        <div className="mt-6 text-center">
-          <p className="text-[15px] font-bold text-stone-700">تذكّر هذا الرقم</p>
-          <p className="mx-auto mt-2 grid size-24 place-items-center rounded-3xl bg-stone-100 text-5xl font-extrabold tabular-nums" aria-label={`الرقم ${s.number}`}>{s.number}</p>
-          <a href={s.bot} target="_blank" rel="noopener noreferrer"
-            className="mt-5 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#229ed9] px-5 text-lg font-bold text-white active:scale-[.98]">
-            <Send className="size-5" aria-hidden="true" />الدخول عبر تيليغرام
-          </a>
-          <ol className="mt-5 space-y-1 text-start text-[15px] leading-7 text-stone-700">
-            <li>١. افتح تيليغرام واضغط «Start».</li>
-            <li>٢. سيظهر ثلاثة أرقام: اضغط الرقم الذي تذكّرته ({s.number}).</li>
+        <>
+          <div className="rounded-[24px] bg-card p-6 text-center ring-1 ring-line">
+            <p className="eyebrow">تذكّر هذا الرقم</p>
+            <p className="num mt-2 text-[56px] font-black leading-none" aria-label={`الرقم ${s.number}`}>{s.number}</p>
+          </div>
+          <a href={s.bot} target="_blank" rel="noopener noreferrer" className="flex min-h-13 w-full items-center justify-center rounded-2xl bg-[#229ed9] px-5 text-[16px] font-bold text-white">افتح تيليغرام</a>
+          <ol className="space-y-1.5 pt-1 text-[15px] leading-7 text-ink-2">
+            <li>١. في تيليغرام اضغط «Start».</li>
+            <li>٢. ستظهر ثلاثة أرقام: اضغط {s.number}.</li>
+            <li>٣. ارجع إلى هنا، وستدخل وحدك.</li>
           </ol>
-          <p className="mt-3 text-sm text-stone-500">بعدها تدخل هذه الصفحة وحدها.</p>
           {import.meta.env.DEV && import.meta.env.MODE !== 'live' && (
-            <div className="mt-8 rounded-2xl border-2 border-dashed border-amber-400 p-4 text-start" aria-label="تجربة محلية">
-              <p className="mb-3 text-sm font-bold text-amber-700">للتجربة المحلية فقط — يحاكي تيليغرام</p>
-              {[[111, 'ادخل كصاحب «متجر النور» (له طلبات وأرباح)'], [222, 'ادخل كمروّج جديد (يبدأ من المعالج)']].map(([tg, t]) => (
-                <button key={tg} type="button" className="mb-2 min-h-12 w-full rounded-xl bg-amber-100 px-3 text-[15px] font-bold"
+            <div className="rounded-2xl border-2 border-dashed border-warn p-4" aria-label="تجربة محلية">
+              <p className="mb-3 text-[13px] font-bold text-warn">للتجربة المحلية فقط — يحاكي تيليغرام</p>
+              {[[111, 'ادخل كصاحب «متجر النور»'], [222, 'ادخل كمروّج جديد']].map(([tg, t]) => (
+                <button key={tg} type="button" className="mb-2 min-h-12 w-full rounded-xl bg-wash px-3 text-[15px] font-bold"
                   onClick={() => fetch('/dev/telegram/auto', { method: 'POST', body: JSON.stringify({ tg, number: s.number, nonce: s.nonce }) })}>{t}</button>
               ))}
             </div>
           )}
-        </div>
+        </>
       ) : (
-        <button type="button" disabled={s.phase === 'starting'} onClick={() => begin()}
-          className="mt-6 flex min-h-14 w-full items-center justify-center rounded-2xl bg-brand px-5 text-lg font-bold text-brand-ink disabled:bg-stone-200 disabled:text-stone-500">
-          {s.phase === 'starting' ? 'لحظة…' : 'إعادة المحاولة'}
-        </button>
+        <Button variant="ink" disabled={s.phase === 'starting'} onClick={() => begin()}>{s.phase === 'starting' ? 'لحظة…' : 'إعادة المحاولة'}</Button>
       )}
     </div>
   )

@@ -82,7 +82,7 @@ export const MUTATIONS = [
   ['إشعار تغيير الهوية', O, "if s.status = 'active' and (n.name, n.logo_path) is distinct from (s.name, s.logo_path) then", 'if false then', '9ر'],
   ['الموقوف يحفظ', O, "if s.status = 'suspended' then raise exception 'متجرك موقوف — راجع الإدارة'; end if;\n\n  v_phone", 'v_phone', '9ث'],
   ['شعار من مجلد غيره', O, "'^' || auth.uid() || '/[A-Za-z0-9._-]{1,80}", "'^[0-9a-f-]+' || '/[A-Za-z0-9._-]{1,80}", '9ج'],
-  ['الإشعار يُسقط العملية', O, 'exception when others then null;\nend $$;\n\n-- ----', 'end $$;\n\n-- ----', '9هـ3'],
+  ['الإشعار يُسقط العملية', '024_razq_products_and_phone', "  end loop;\nexception when others then null;\nend $$;\n\n-- صاحب المتجر", "  end loop;\nend $$;\n\n-- صاحب المتجر", '9هـ3'],
   ['رمز تيليغرام يُعاد', O, 'set chat_id = p_chat_id, code = null, code_expires_at = null,', 'set chat_id = p_chat_id,', '11أك'],
   ['دالة داخلية متاحة لـanon', O, 'grant execute on function public.reseller_store(text),', 'grant execute on function public.reseller_lines(uuid, uuid, int), public.reseller_store(text),', '11هـ'],
 
@@ -106,11 +106,21 @@ export const MUTATIONS = [
   ['جدول الأسرار بمنح', '022_reseller_secrets', "revoke all on public.reseller_secrets from public, anon, authenticated, service_role;", "revoke all on public.reseller_secrets from public, anon;", '11د'],
 
   // --- الدخول داخل القاعدة (023) ---
-  ['ويبهوك بلا سر', '023_reseller_db_login', "if v_secret is null or v_given is distinct from v_secret then return '{}'::jsonb; end if;", "if v_secret is null then return '{}'::jsonb; end if;", '16د'],
-  ['المجموعات تُقبل', '023_reseller_db_login', "or v_chat->>'type' is distinct from 'private' then", "then", '16ز'],
+  ['ويبهوك بلا سر', '024_razq_products_and_phone', "if v_secret is null or v_given is distinct from v_secret then return '{}'::jsonb; end if;", "if v_secret is null then return '{}'::jsonb; end if;", '16د'],
+  ['المجموعات تُقبل', '024_razq_products_and_phone', "or v_chat->>'type' is distinct from 'private' then", "then", '16ز'],
   ['تبنّي حساب بلا علامة', '023_reseller_db_login', "where id = v_user and raw_app_meta_data->>'reseller_tg' = v_tg::text", "where id = v_user", '16ش'],
   ['الختم يمسّ الجميع', '023_reseller_db_login', "where id = auth.uid() and raw_app_meta_data ? 'reseller_tg'", "where id = auth.uid()", '16ث'],
   ['تسجيل الويبهوك لـanon', '023_reseller_db_login', "grant execute on function public.reseller_login_seal() to authenticated;", "grant execute on function public.reseller_login_seal() to authenticated;\ngrant execute on function public.reseller_bot_register(text) to anon;", '11هـ'],
+
+  // --- رزق (024) ---
+  ['الخاص بانتظار يظهر', '024_razq_products_and_phone', "where o.store_id = s.id and o.status = 'approved' and o.is_available", "where o.store_id = s.id and o.is_available", '17ج5'],
+  ['صلاحية الخدمة تبقى بعد الزر', '024_razq_products_and_phone', "      perform set_config('request.jwt.claims', '', true);\n      perform set_config('request.jwt.claim.role', '', true);\n", "", '17د6'],
+  ['المجموع الخاص المتوقع', '024_razq_products_and_phone', "if p_expected_own_total is not null and p_expected_own_total <> v_sub + v_store.own_delivery_fee then", "if false then", '17و7'],
+  ['منتج خاص من متجر آخر', '024_razq_products_and_phone', "where id = it.id and store_id = v_store.id and status = 'approved' and is_available for share;", "where id = it.id and status = 'approved' and is_available for share;", '17و10'],
+  ['التعديل لا يعيد المراجعة', '024_razq_products_and_phone', "status = case when v_changed then 'pending' else status end", "status = status", '17هـ4'],
+  ['هاتف مكرر بكلمة سر', '024_razq_products_and_phone', "if exists (select 1 from public.reseller_identities where phone = v_phone) or ", "if ", '17أ12'],
+  ['الاختيار يُظهر غير المختار', '024_razq_products_and_phone', "select s, p.id, p.id = any (p_ids)", "select s, p.id, true", '17ب2'],
+  ['حد الهاتف للخاص', '024_razq_products_and_phone', "and public.zad_canonical_phone(customer_phone) = v_phone) >= 5 then", "and public.zad_canonical_phone(customer_phone) = v_phone) >= 500 then", '17و13'],
 
   // --- المال ---
   ['المهلة', M, "now() + make_interval(secs => (public.reseller_num('reseller_hold_days', 3) * 86400)::double precision)", 'now()', '1ك'],

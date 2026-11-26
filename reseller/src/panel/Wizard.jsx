@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Check, LogOut, Pencil } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { errText } from '../lib/config'
 import { iqd, latin, num } from '../lib/format'
-import { Button, Notice } from '../ui'
+import { Button, Notice, field } from '../ui'
 import { nav, priceFor, rpc, sb, storeUrl } from './sb'
+import { Wordmark } from './Panel'
 
 const PRESETS = [10, 20, 30, 50]
+const STEPS = ['اسم المتجر', 'ربحك', 'منتجاتك', 'الإرسال']
 
-/** معالج الإنشاء: ثلاث شاشات، سؤال في كل واحدة. كل خطوة تُحفظ في القاعدة فيستأنف من حيث توقف. */
+/** معالج الإنشاء: أربع شاشات، سؤال في كل واحدة. كل خطوة تُحفظ في القاعدة فيستأنف من حيث توقف. */
 export default function Wizard({ me, reload }) {
   const store = me.store
   const [step, setStep] = useState(store ? 2 : 1)
   const [name, setName] = useState(store?.name ?? '')
   const [pct, setPct] = useState(store?.markup_type === 'percent' && store.markup_value > 0 ? store.markup_value : me.default_markup)
   const [custom, setCustom] = useState(false)
-  const [sample, setSample] = useState(null)             // منتج حقيقي للمثال الحي
-  const [count, setCount] = useState(0)
+  const [rows, setRows] = useState([])                 // الكتالوج
+  const [suggested, setSuggested] = useState([])       // ترتيب المقترحة
+  const [picked, setPicked] = useState(null)           // Set
+  const [browse, setBrowse] = useState(false)
   const [slug, setSlug] = useState(store?.slug ?? '')
   const [editSlug, setEditSlug] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -23,10 +26,10 @@ export default function Wizard({ me, reload }) {
 
   useEffect(() => {
     if (!store) return
-    rpc('reseller_catalog').then((rows) => {
-      const ok = rows.filter((r) => r.base > 0)
-      setCount(ok.length)
-      setSample(ok.find((r) => r.base >= 4000 && r.base <= 40000 && r.is_visible) ?? ok[0] ?? null)
+    Promise.all([rpc('reseller_catalog'), rpc('reseller_suggestions', { p_limit: 12 })]).then(([c, s]) => {
+      const ok = c.filter((r) => r.base > 0)
+      setRows(ok); setSuggested(s.map((x) => x.product_id))
+      setPicked((p) => p ?? new Set(s.map((x) => x.product_id)))
     }).catch(() => {})
   }, [store?.id])
 
@@ -35,88 +38,132 @@ export default function Wizard({ me, reload }) {
     try { await fn() } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
   }
   const p = Math.min(100, Math.max(1, Math.round(+latin(pct)) || 0))
+  const byId = useMemo(() => new Map(rows.map((r) => [r.product_id, r])), [rows])
+  const sample = rows.find((r) => r.product_id === suggested[0]) ?? rows[0]
   const price = sample ? priceFor(sample.base, p) : 0
+  const cats = useMemo(() => [...rows.reduce((m, r) => m.set(r.category, [...(m.get(r.category) ?? []), r]), new Map())], [rows])
+  const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const dots = (
-    <div className="mb-8 flex items-center justify-center gap-2" aria-label={`الخطوة ${step} من 3`}>
-      {[1, 2, 3].map((n) => <span key={n} className={`h-2 rounded-full transition-all ${n === step ? 'w-8 bg-brand' : n < step ? 'w-2 bg-brand' : 'w-2 bg-stone-200'}`} />)}
-    </div>
-  )
-  const back = step > 1 && step < 3 + 1 && (
-    <button type="button" onClick={() => setStep(step - 1)} className="mb-2 grid size-11 place-items-center rounded-xl active:bg-stone-100" aria-label="رجوع"><ArrowRight className="size-6" /></button>
-  )
+  const choice = (r) => {
+    const on = picked?.has(r.product_id)
+    return (
+      <li key={r.product_id}>
+        <button type="button" onClick={() => toggle(r.product_id)} aria-pressed={on}
+          className={`flex w-full items-center gap-3 rounded-2xl bg-card p-2.5 text-start ring-1 transition ${on ? 'ring-2 ring-ink' : 'ring-line'}`}>
+          <span className="block size-16 shrink-0 overflow-hidden rounded-xl bg-wash">{r.image_url && <img src={r.image_url} alt="" loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover" />}</span>
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-[14px] font-medium leading-5">{r.name}</span>
+            <span className="num mt-1 block text-[13px] text-mute">تبيعه {iqd(priceFor(r.base, p))} · ربحك {iqd(priceFor(r.base, p) - r.base)}</span>
+          </span>
+          <span className={`grid size-7 shrink-0 place-items-center rounded-full text-[13px] font-black ${on ? 'bg-ink text-white' : 'ring-1 ring-line text-transparent'}`} aria-hidden="true">✓</span>
+        </button>
+      </li>
+    )
+  }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 py-6">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col px-6 pb-8 pt-6">
       <div className="flex items-center justify-between">
-        {step > 1 ? back : <span />}
-        <button type="button" onClick={() => sb.auth.signOut()} aria-label="خروج" className="grid size-11 place-items-center rounded-xl text-stone-400 active:bg-stone-100"><LogOut className="size-5" /></button>
+        <Wordmark className="text-[24px]" />
+        <button type="button" onClick={() => sb.auth.signOut()} className="min-h-11 rounded-2xl px-3 text-[13px] font-bold text-mute hover:bg-wash">خروج</button>
       </div>
-      {dots}
-      {err && <div className="mb-4"><Notice>{err}</Notice></div>}
+      <div className="mt-6" aria-label={`الخطوة ${step} من 4`}>
+        <div className="flex gap-1.5">{STEPS.map((s, i) => <span key={s} className={`h-1 flex-1 rounded-full ${i < step ? 'bg-ink' : 'bg-line'}`} />)}</div>
+        <p className="eyebrow mt-3">الخطوة {step} من 4 · {STEPS[step - 1]}</p>
+      </div>
+      {err && <div className="mt-5"><Notice tone="bad">{err}</Notice></div>}
 
       {step === 1 && (
-        <form className="flex flex-1 flex-col" onSubmit={(e) => { e.preventDefault(); run(async () => { await rpc('reseller_quick_start', { p_name: name.trim() }); await reload(); setStep(2) }) }}>
-          <h1 className="text-2xl font-extrabold">ما اسم متجرك؟</h1>
-          <p className="mt-2 text-stone-600">هذا الاسم سيراه زبائنك. يمكنك تغييره لاحقاً.</p>
+        <form className="mt-6 flex flex-1 flex-col" onSubmit={(e) => { e.preventDefault(); run(async () => { await rpc('reseller_quick_start', { p_name: name.trim() }); await reload(); setStep(2) }) }}>
+          <h1 className="text-[28px] font-black leading-10">ما اسم متجرك؟</h1>
+          <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">هذا ما سيراه زبائنك. يمكنك تغييره لاحقاً.</p>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="مثال: متجر النور" autoComplete="off"
-            className="mt-6 min-h-14 w-full rounded-2xl bg-stone-100 px-4 text-lg outline-none focus:bg-white focus:ring-2 focus:ring-brand" aria-label="اسم المتجر" />
-          <div className="mt-auto pt-8"><Button type="submit" disabled={busy || name.trim().length < 2}>{busy ? 'لحظة…' : 'التالي'}</Button></div>
+            className={`${field} mt-7 min-h-15 text-[18px]`} aria-label="اسم المتجر" />
+          <div className="mt-auto pt-10"><Button variant="ink" type="submit" disabled={busy || name.trim().length < 2}>{busy ? 'لحظة…' : 'التالي'}</Button></div>
         </form>
       )}
 
       {step === 2 && (
-        <div className="flex flex-1 flex-col">
-          <h1 className="text-2xl font-extrabold">كم تريد أن تربح؟</h1>
-          <p className="mt-2 text-stone-600">نضيف نسبة على سعر كل منتج، وهي ربحك. يمكنك تغييرها لكل منتج لاحقاً.</p>
-          <div className="mt-6 grid grid-cols-4 gap-2" role="radiogroup" aria-label="نسبة الربح">
+        <div className="mt-6 flex flex-1 flex-col">
+          <h1 className="text-[28px] font-black leading-10">كم تريد أن تربح؟</h1>
+          <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">نسبة تُضاف على سعر كل منتج، وهي ربحك. وتستطيع تغيير سعر أي منتج لاحقاً.</p>
+          <div className="mt-7 grid grid-cols-4 gap-2" role="radiogroup" aria-label="نسبة الربح">
             {PRESETS.map((v) => (
               <button key={v} type="button" role="radio" aria-checked={!custom && pct === v} onClick={() => { setPct(v); setCustom(false) }}
-                className={`min-h-14 rounded-2xl text-lg font-extrabold tabular-nums ring-1 transition ${!custom && pct === v ? 'bg-brand text-brand-ink ring-brand' : 'bg-white ring-stone-200'}`}>{v}٪</button>
+                className={`num min-h-15 rounded-2xl text-[19px] font-extrabold transition ${!custom && pct === v ? 'bg-ink text-white' : 'bg-card ring-1 ring-line'}`}>{v}٪</button>
             ))}
           </div>
           {custom ? (
-            <label className="mt-3 flex items-center gap-3"><span className="text-[15px] font-bold">نسبة أخرى</span>
-              <input autoFocus inputMode="numeric" value={latin(pct)} onChange={(e) => setPct(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                className="min-h-12 w-24 rounded-2xl bg-stone-100 px-4 text-center text-lg font-bold tabular-nums outline-none focus:ring-2 focus:ring-brand" /> ٪</label>
-          ) : <button type="button" onClick={() => setCustom(true)} className="mt-3 min-h-11 text-[15px] font-bold text-brand-deep underline underline-offset-4">نسبة أخرى</button>}
+            <label className="mt-4 flex items-center gap-3"><span className="text-[15px] font-bold">نسبة أخرى</span>
+              <input autoFocus inputMode="numeric" value={latin(pct)} onChange={(e) => setPct(e.target.value.replace(/\D/g, '').slice(0, 3))} className={`${field} num w-28 text-center font-bold`} /> ٪</label>
+          ) : <button type="button" onClick={() => setCustom(true)} className="mt-3 min-h-11 self-start text-[15px] font-bold underline decoration-line decoration-2 underline-offset-8">نسبة أخرى</button>}
 
           {sample && (
-            <div className="mt-6 rounded-3xl bg-brand-soft p-5" aria-live="polite">
-              <p className="text-sm font-bold text-brand-deep">مثال من منتجاتك</p>
-              <p className="mt-2 font-bold leading-7">{sample.name}</p>
-              <p className="mt-3 text-lg leading-8">تبيعه بـ <b className="tabular-nums">{iqd(price)}</b></p>
-              <p className="text-lg leading-8">وربحك <b className="tabular-nums text-brand-deep">{iqd(price - sample.base)}</b></p>
+            <div className="mt-7 rounded-[24px] bg-card p-5 shadow-[var(--shadow-card)]" aria-live="polite">
+              <p className="eyebrow">مثال من منتجاتك</p>
+              <p className="mt-2 text-[16px] font-bold leading-7">{sample.name}</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-wash p-4"><p className="text-[13px] text-mute">تبيعه بـ</p><p className="num mt-1 text-[20px] font-black">{iqd(price)}</p></div>
+                <div className="rounded-2xl bg-brand-soft p-4"><p className="text-[13px] text-brand-deep">ربحك</p><p className="num mt-1 text-[20px] font-black text-brand-deep">{iqd(price - sample.base)}</p></div>
+              </div>
             </div>
           )}
-          <div className="mt-auto pt-8">
-            <Button disabled={busy || p < 1} onClick={() => run(async () => { await rpc('reseller_save_store', { p: { markup_type: 'percent', markup_value: p } }); await reload(); setStep(3) })}>{busy ? 'لحظة…' : 'التالي'}</Button>
+          <div className="mt-auto flex gap-3 pt-10">
+            <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(1)}>رجوع</Button>
+            <Button variant="ink" disabled={busy || p < 1} onClick={() => run(async () => { await rpc('reseller_save_store', { p: { markup_type: 'percent', markup_value: p } }); await reload(); setStep(3) })}>{busy ? 'لحظة…' : 'التالي'}</Button>
           </div>
         </div>
       )}
 
       {step === 3 && (
-        <div className="flex flex-1 flex-col">
-          <h1 className="text-2xl font-extrabold">متجرك جاهز</h1>
-          <p className="mt-2 text-stone-600">راجع ثم أرسله للموافقة. بعد الموافقة تشارك رابطك مع زبائنك.</p>
-          <dl className="mt-6 divide-y divide-stone-100 rounded-3xl ring-1 ring-stone-200">
-            <div className="p-4"><dt className="text-sm text-stone-500">اسم المتجر</dt><dd className="mt-0.5 text-lg font-bold">{store.name}</dd></div>
-            <div className="p-4"><dt className="text-sm text-stone-500">رابط المتجر</dt>
+        <div className="mt-6 flex flex-1 flex-col">
+          <h1 className="text-[28px] font-black leading-10">اختر ما تبيعه</h1>
+          <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">اخترنا لك الأكثر مبيعاً. أضف أو احذف ما تشاء، أو اعرض كل المنتجات.</p>
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-[15px] font-bold">مقترحة لك</p>
+            <p className="num text-[13px] text-mute">اخترت {num(picked?.size ?? 0)} منتجاً</p>
+          </div>
+          <ul className="mt-3 space-y-2.5">{suggested.map((id) => byId.get(id)).filter(Boolean).map(choice)}</ul>
+          <button type="button" onClick={() => setPicked(new Set(rows.map((r) => r.product_id)))}
+            className="mt-4 min-h-12 rounded-2xl bg-card text-[15px] font-bold ring-1 ring-line">أضف كل المنتجات ({num(rows.length)})</button>
+          {!browse ? (
+            <button type="button" onClick={() => setBrowse(true)} className="mt-2 min-h-12 text-[15px] font-bold underline decoration-line decoration-2 underline-offset-8">تصفّح كل المنتجات واختر بنفسك</button>
+          ) : cats.map(([cat, list]) => (
+            <section key={cat} className="mt-7">
+              <p className="eyebrow mb-2.5">{cat}</p>
+              <ul className="space-y-2.5">{list.map(choice)}</ul>
+            </section>
+          ))}
+          <div className="sticky bottom-0 -mx-6 mt-auto flex gap-3 bg-paper/95 px-6 pt-6 backdrop-blur safe-b">
+            <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(2)}>رجوع</Button>
+            <Button variant="ink" disabled={busy || !picked?.size} onClick={() => run(async () => { await rpc('reseller_pick_products', { p_ids: [...picked] }); setStep(4) })}>{busy ? 'لحظة…' : `التالي · ${num(picked?.size ?? 0)} منتجاً`}</Button>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="mt-6 flex flex-1 flex-col">
+          <h1 className="text-[28px] font-black leading-10">متجرك جاهز</h1>
+          <p className="mt-2 text-[16px] font-light leading-7 text-ink-2">راجعه ثم أرسله للموافقة. بعد الموافقة تشارك رابطك مع زبائنك.</p>
+          <dl className="mt-7 divide-y hairline rounded-[24px] bg-card px-5 shadow-[var(--shadow-card)]">
+            <div className="py-4"><dt className="eyebrow">اسم المتجر</dt><dd className="mt-1 text-[18px] font-bold">{store.name}</dd></div>
+            <div className="py-4"><dt className="eyebrow">رابط المتجر</dt>
               {editSlug ? (
-                <form className="mt-1 flex gap-2" onSubmit={(e) => { e.preventDefault(); run(async () => { await rpc('reseller_save_store', { p: { slug } }); await reload(); setEditSlug(false) }) }}>
-                  <input dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} maxLength={30} autoFocus
-                    className="min-h-12 min-w-0 flex-1 rounded-2xl bg-stone-100 px-3 text-start outline-none focus:ring-2 focus:ring-brand" aria-label="الرابط" />
-                  <button type="submit" disabled={busy} className="grid size-12 place-items-center rounded-2xl bg-brand text-brand-ink" aria-label="حفظ"><Check className="size-5" /></button>
+                <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); run(async () => { await rpc('reseller_save_store', { p: { slug } }); await reload(); setEditSlug(false) }) }}>
+                  <input dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} maxLength={30} autoFocus className={`${field} min-w-0 flex-1 text-start`} aria-label="الرابط" />
+                  <button type="submit" disabled={busy} className="min-h-13 rounded-2xl bg-ink px-5 font-bold text-white">حفظ</button>
                 </form>
               ) : (
-                <dd className="mt-0.5 flex items-center gap-2"><span dir="ltr" className="min-w-0 flex-1 truncate text-start font-bold">{storeUrl(store.slug).replace(/^https?:\/\//, '')}</span>
-                  <button type="button" onClick={() => { setSlug(store.slug); setEditSlug(true) }} className="grid size-11 place-items-center rounded-xl text-stone-500 active:bg-stone-100" aria-label="تعديل الرابط"><Pencil className="size-4" /></button></dd>
+                <dd className="mt-1 flex items-center gap-3"><span dir="ltr" className="min-w-0 flex-1 truncate text-start text-[16px] font-bold">{storeUrl(store.slug).replace(/^https?:\/\//, '')}</span>
+                  <button type="button" onClick={() => { setSlug(store.slug); setEditSlug(true) }} className="min-h-11 shrink-0 rounded-xl px-3 text-[14px] font-bold underline decoration-line decoration-2 underline-offset-8">تعديل</button></dd>
               )}
             </div>
-            <div className="p-4"><dt className="text-sm text-stone-500">ربحك</dt><dd className="mt-0.5 text-lg font-bold">{store.markup_value}٪ على كل منتج</dd></div>
-            <div className="p-4"><dt className="text-sm text-stone-500">المنتجات</dt><dd className="mt-0.5 text-lg font-bold">{count ? `${num(count)} منتج جاهز للبيع` : 'كل المنتجات'}</dd></div>
+            <div className="py-4"><dt className="eyebrow">ربحك</dt><dd className="mt-1 text-[18px] font-bold">{store.markup_value}٪ على كل منتج</dd></div>
+            <div className="py-4"><dt className="eyebrow">المنتجات</dt><dd className="mt-1 text-[18px] font-bold">{num(picked?.size ?? 0)} منتجاً</dd></div>
           </dl>
-          <div className="mt-auto pt-8">
+          <p className="mt-4 text-[13px] leading-6 text-mute">بعد الإرسال تضيف منتجاتك الخاصة إن أردت، ويراجعها فريقنا قبل ظهورها.</p>
+          <div className="mt-auto flex gap-3 pt-10">
+            <Button variant="quiet" className="w-auto px-6" onClick={() => setStep(3)}>رجوع</Button>
             <Button disabled={busy} onClick={() => run(async () => { await rpc('reseller_submit_store'); nav('#/'); await reload() })}>{busy ? 'لحظة…' : 'أرسل للموافقة'}</Button>
           </div>
         </div>
